@@ -73,8 +73,14 @@ def format_record(record: LeadRecord) -> str:
         lines.append(f"  handover reason: {record.handover_reason}")
     if record.missing_info:
         lines.append(f"  missing: {', '.join(record.missing_info)}")
+    for rejected in record.rejected_drafts:
+        lines.append(f"  rejected draft #{rejected.attempt}:")
+        for problem in rejected.problems:
+            found = f" (found: {problem.found})" if problem.found else ""
+            lines.append(f"    - {problem.check}{found} -> {problem.fix}")
     for note in record.guardrail_notes:
-        lines.append(f"  guardrail: {note}")
+        if not note.startswith(f"{len(record.rejected_drafts)} draft(s) rejected"):
+            lines.append(f"  guardrail: {note}")
     lines.append(f"  tools used: {' > '.join(record.tool_calls) or 'none'}")
     if record.draft_reply:
         lines.append("  DRAFT (not sent - waiting for human approval):")
