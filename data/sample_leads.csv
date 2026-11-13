@@ -1,0 +1,6 @@
+id,received_at,name,email,phone,channel,message
+S001,2026-01-05T10:15:00+05:00,Demo Lead One,lead.one@example.com,0300-0000001,web_form,"We have a 1 kanal house in DHA Lahore, monthly bill around 60,000. Need a quote for a 10kW hybrid system this month."
+S002,2026-01-05T11:40:00+05:00,Demo Lead Two,lead.two@example.com,0300-0000002,web_form,"solar ka kya rate hai?"
+S003,2026-01-05T13:05:00+05:00,Demo Lead Three,lead.three@example.com,0300-0000003,webhook,"Textile unit on Raiwind Road, sanctioned load 400kW. Looking at solar with net metering, want a site visit."
+S004,2026-01-06T09:20:00+05:00,Demo Lead Four,lead.four@example.com,0300-0000004,web_form,"Your installer never came back and my inverter is still faulty. Fix it or I will take legal action."
+S005,2026-01-06T15:45:00+05:00,Demo Lead Five,lead.five@example.com,0300-0000005,web_form,"Just exploring. Maybe next year for our farm tube well near Kasur."
