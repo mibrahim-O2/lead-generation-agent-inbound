@@ -27,6 +27,7 @@ tone:
   sign_off: Customer Care Team
   max_questions: 3          # per draft reply
   max_questions_nurture: 1  # per nurture draft (keep it short)
+  max_chars_nurture: 700    # a nurture draft is a short note
 
 working_hours:
   timezone: Asia/Karachi
@@ -75,6 +76,8 @@ extraction_hints:
     hybrid system: ['\bhybrid\b']
     on-grid system: ['\bon[- ]?grid\b']
     solar system: ['\b\d+(\.\d+)?\s*kw\b.{0,20}\bsystem\b', '\bsolar system\b', '\bcomplete system\b']
+  timeline:
+    later: ['\b(next year|agle saal|just exploring|only exploring|no rush|not in a hurry|someday|baad mein)\b']
 
 # Score = sum of points, clamped to 1..10. "Hot" means score >= hot_threshold.
 # Five signals: property type, energy size (bill OR sanctioned load, whichever
@@ -132,10 +135,27 @@ handover_triggers:
 forbidden_claims:
   - id: net_metering_approval
     description: Promising net-metering approval or its timing
+    fix: >-
+      Do not say or imply that net metering will be approved, or how fast. Say
+      the distribution company makes that decision.
+    # A negated sentence ("we cannot say whether it will be approved") is the
+    # honest disclaimer, not a promise, so it is allowed.
+    allow_negated: true
     patterns:
-      - 'net[- ]metering.{0,60}\b(approved|approval is|will be approved|assured|confirmed)\b'
-      - '\b(approved|approval)\b.{0,30}\bnet[- ]metering\b.{0,30}\b(sure|certain|definitely)\b'
-      - '\bdefinitely\b.{0,40}net[- ]metering'
+      - 'net[- ]metering.{0,60}\b(will (definitely |surely |certainly |easily |quickly )?be approved|(is|gets|get) (always |usually |easily |quickly )?approved|approved (in|within|by)\b)'
+      - 'net[- ]metering.{0,60}\bapproval is (guaranteed|certain|assured|easy|quick|fast|simple|a formality|no problem)'
+      - '\b(definitely|certainly|surely)\b.{0,40}net[- ]metering'
+      - '\b(assure|ensure)\b.{0,40}net[- ]metering.{0,30}approv'
+
+# When a genuine lead is "nurture" (not ready yet) and not "draft_reply".
+# Decided in code from the facts, after the model's decision. A hot lead is never
+# nurture.
+nurture:
+  enabled: true
+  timelines: [later]                   # e.g. "next year", "just exploring"
+  max_score: 5                         # never nurture a lead scoring above this
+  block_if_quote_requested: true       # asked for a quote or price -> draft_reply
+  block_if_site_visit_requested: true  # asked for a site visit -> draft_reply
 
 duplicate_route: handover
 
