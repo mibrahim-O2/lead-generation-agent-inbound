@@ -1,8 +1,117 @@
-# Niche preset: solar equipment + installation.
-# Layer 2 of the config stack: defaults -> niche preset -> client values.
-# Scaffold only - the full rule book (qualification questions, scoring rubric,
-# handover triggers, forbidden claims, tone, working hours) lands in the
-# core-agent task.
+# Niche preset: solar equipment + installation (layer 2 of the config stack).
+# defaults (src/leadgen/config.py) -> THIS FILE -> config/client.yaml
+# All company-specific values live in config/client.yaml, so another solar
+# client only edits that file. Another niche copies this file and edits it.
 niche: solar
+
+company:
+  about: >-
+    Solar equipment supplier and installer for homes, businesses, factories
+    and farms.
+  services:
+    - Solar panels
+    - Inverters (on-grid and hybrid)
+    - Batteries
+    - Installation
+    - Net metering application support
+  customers: [homes, businesses, factories, farms]
+
+calendar_link: https://example.com/book-a-call  # placeholder
+
+tone:
+  style: >-
+    Warm, respectful and practical. Short sentences, no jargon, no pressure.
+    Reply in the language the customer used (English or Roman Urdu).
+    Ask at most four questions in one reply.
+  languages: [english, roman_urdu]
+  sign_off: Customer Care Team
+
+working_hours:
+  timezone: Asia/Karachi
+  days: Monday to Saturday
+  hours: "09:00 to 18:00"
+
+# The agent asks only the questions whose field is still unknown.
+qualification_questions:
+  - field: property_type
+    question: Is the system for a home, a business, a factory or a farm?
+    question_roman_urdu: System ghar, business, factory ya farm ke liye chahiye?
+  - field: monthly_bill_pkr
+    question: Roughly how much is your average monthly electricity bill?
+    question_roman_urdu: Aap ka mahana bijli ka bill taqreeban kitna aata hai?
+  - field: location
+    question: Which city and area is the property in?
+    question_roman_urdu: Property kis sheher aur area mein hai?
+  - field: timeline
+    question: When would you like to have the system installed?
+    question_roman_urdu: Aap system kab tak lagwana chahte hain?
+  - field: product_interest
+    question: >-
+      Are you interested in a complete system, or specific items such as
+      panels, an inverter or batteries?
+    question_roman_urdu: >-
+      Aap ko complete system chahiye ya sirf panels, inverter ya battery?
+  - field: contact
+    question: What is the best phone number or email to reach you on?
+    question_roman_urdu: Aap se rabta karne ke liye behtareen number ya email kya hai?
+
+# Score = sum of points, clamped to 1..10. "Hot" means score >= hot_threshold.
 scoring:
   hot_threshold: 7
+  min_score: 1
+  max_score: 10
+  rubric:
+    property_type:
+      factory: 3
+      business: 2
+      farm: 2
+      home: 2
+      unknown: 0
+    monthly_bill_pkr:        # highest band whose "min" the bill reaches
+      - {min: 100000, points: 3}
+      - {min: 50000, points: 2}
+      - {min: 20000, points: 1}
+    location:                # fit against service_area below
+      core: 2
+      nearby: 1
+      outside: 0
+      unknown: 0
+    timeline:
+      immediate: 2           # this month / as soon as possible
+      within_3_months: 1
+      later: 0
+      unknown: 0
+    quote_requested: 1       # asked for a quote, price or site visit
+
+service_area:
+  core: [lahore, dha, gulberg, johar town, model town, bahria, raiwind, cantt]
+  nearby: [kasur, sheikhupura, gujranwala, muridke, pattoki, nankana]
+
+# Added to the built-in triggers (merged by id).
+handover_triggers:
+  - id: safety_incident
+    description: Fire, shock or damage reported
+    patterns:
+      - '\b(fire|burn(t|ing)|spark(s|ing)?|electric shock|short circuit)\b'
+      - '\b(roof|ceiling) (leak|damage|crack)'
+  - id: existing_customer_fault
+    description: Fault on an already installed system
+    patterns:
+      - '\b(inverter|panel|battery|system)\b.{0,40}\b(fault|faulty|stopped working|kharab|band ho)'
+
+# Added to the built-in forbidden claims (merged by id).
+forbidden_claims:
+  - id: net_metering_approval
+    description: Promising net-metering approval or its timing
+    patterns:
+      - 'net[- ]metering.{0,60}\b(approved|approval is|will be approved|assured|confirmed)\b'
+      - '\b(approved|approval)\b.{0,30}\bnet[- ]metering\b.{0,30}\b(sure|certain|definitely)\b'
+      - '\bdefinitely\b.{0,40}net[- ]metering'
+
+duplicate_route: handover
+
+# Placeholder token prices for the cost ESTIMATE only. Set your model's real
+# prices in config/client.yaml.
+pricing:
+  input_per_1m_usd: 0.0
+  output_per_1m_usd: 0.0
