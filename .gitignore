@@ -1,0 +1,50 @@
+# --- Secrets: never commit these ---
+.env
+.env.*
+!example.env
+
+# Key / credential files (Google service accounts, OAuth tokens, etc.)
+*service-account*.json
+*service_account*.json
+*credentials*.json
+*client_secret*.json
+*-key.json
+*_key.json
+*.key.json
+*keys*.json
+token.json
+*.pem
+*.p12
+secrets/
+
+# --- Runtime data written by real runs (leads, drafts, run logs) ---
+data/runtime/
+data/*.json
+data/*.jsonl
+data/leads*.csv
+!data/sample_leads.csv
+*.log
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# --- Dashboard (Node) ---
+node_modules/
+dashboard/dist/
+
+# --- Editors / OS / local tool settings ---
+.vscode/
+.idea/
+.DS_Store
+.claude/settings.local.json
