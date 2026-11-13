@@ -75,11 +75,13 @@ def run(lead: Lead, rulebook, llm, storage=None):
 
 
 def style(rulebook, lead: Lead, body: str, language: str = "english", kind: str = "reply"):
-    return check_draft_style(body, language, kind, make_ctx(rulebook, lead))
+    """Style problems as text: 'check: found fix'."""
+    problems = check_draft_style(body, language, kind, make_ctx(rulebook, lead))
+    return [f"{p.check}: {p.found} {p.fix}" for p in problems]
 
 
-def draft_call(body: str, language: str = "english", kind: str = "reply") -> tuple:
-    return ("tool", "draft_reply", {"body": body, "language": language, "kind": kind})
+def draft_call(body: str, language: str = "english") -> tuple:
+    return ("tool", "draft_reply", {"body": body, "language": language})
 
 
 # --------------------------------------------------------------------------- 1. contact
@@ -353,8 +355,8 @@ def test_four_questions_are_rejected(rulebook) -> None:
     assert record.draft_reply == "" and "draft_blocked" in record.flags
 
 
-def test_nurture_draft_with_too_many_questions_is_flagged(rulebook) -> None:
-    """Passed as a normal reply (2 questions), but the lead ended up as nurture."""
+def test_nurture_draft_with_too_many_questions_is_not_kept(rulebook) -> None:
+    """Drafted before scoring (so checked as a reply), but the lead is a nurture lead."""
     llm = scripted(
         [
             draft_call("No rush. Which city? What is your bill?"),
@@ -362,7 +364,8 @@ def test_nurture_draft_with_too_many_questions_is_flagged(rulebook) -> None:
         ]
     )
     record = run(SAMPLES["S005"], rulebook, llm)
-    assert record.route == "nurture" and "too_many_questions" in record.flags
+    assert record.draft_reply == "" and "draft_blocked" in record.flags
+    assert record.route == "handover" and "questions" in record.handover_reason
 
 
 # --------------------------------------------------------------------------- 6. duplicate
