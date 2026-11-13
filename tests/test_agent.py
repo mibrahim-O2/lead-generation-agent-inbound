@@ -25,6 +25,10 @@ def run(lead: Lead, rulebook, llm, settings=None, storage=None):
     return record
 
 
+def draft(body: str) -> tuple:
+    return ("tool", "draft_reply", {"body": body, "language": "english", "kind": "reply"})
+
+
 def test_agent_definition(rulebook) -> None:
     agent = build_agent(rulebook, None)
     assert agent.output_type is LeadDecision
@@ -46,7 +50,7 @@ def test_hot_lead_end_to_end_with_mock(rulebook, settings) -> None:
     assert record.score == 9
     assert "https://example.com/book-a-call" in record.draft_reply
     assert "distribution company" in record.draft_reply  # FAQ answer was used
-    assert record.tool_calls[0] == "check_duplicate" and record.tool_calls[-1] == "save_lead"
+    assert record.tool_calls[0] == "score_lead" and record.tool_calls[-1] == "save_lead"
     assert storage.list_records()[0].lead.id == "H1"
 
 
@@ -55,15 +59,15 @@ def test_mock_chooses_different_tools_for_different_leads(rulebook, settings) ->
     vague = run(Lead(id="V", email="v@example.com", message="solar info please"), rulebook, llm)
     complaint = run(Lead(id="C", email="c@example.com", message="I want a refund"), rulebook, llm)
     assert "get_calendar_link" not in vague.tool_calls and "draft_reply" in vague.tool_calls
-    assert complaint.tool_calls == ["check_duplicate", "flag_handover", "save_lead"]
+    assert complaint.tool_calls == ["flag_handover", "save_lead"]
 
 
 def test_forbidden_draft_is_rejected_by_the_tool(rulebook, lead) -> None:
     llm = scripted(
         [
-            ("tool", "draft_reply", {"body": "It costs Rs 900,000.", "language": "english"}),
+            draft("It costs Rs 900,000."),
             ("tool", "save_lead", {"intent": "price_enquiry", "route": "draft_reply",
-                                   "summary": "s", "missing_info": []}),
+                                   "summary": "s"}),
             ("final", decision(draft_reply="It costs Rs 900,000, guaranteed.")),
         ]
     )  # fmt: skip
@@ -75,8 +79,8 @@ def test_forbidden_draft_is_rejected_by_the_tool(rulebook, lead) -> None:
 def test_model_can_fix_a_rejected_draft(rulebook, lead) -> None:
     llm = scripted(
         [
-            ("tool", "draft_reply", {"body": "You will save 80% for sure.", "language": "english"}),
-            ("tool", "draft_reply", {"body": "Which city are you in?", "language": "english"}),
+            draft("You will save 80% for sure."),
+            draft("Which city are you in?"),
             ("final", decision()),
         ]
     )  # fmt: skip
@@ -106,7 +110,11 @@ def test_model_cannot_skip_scoring_or_fake_a_score(rulebook) -> None:
               "urgency": "low"}  # fmt: skip
     llm = scripted(
         [
-            ("tool", "draft_reply", {"body": "Thanks for reaching out.", "language": "english"}),
+            (
+                "tool",
+                "draft_reply",
+                {"body": "Thanks for reaching out.", "language": "english", "kind": "reply"},
+            ),
             ("final", decision(score=10, extracted=fields)),
         ]
     )

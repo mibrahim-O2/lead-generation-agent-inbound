@@ -1,0 +1,18 @@
+id: 25_sample_s005_nurture
+description: 'Sample lead S005: maybe next year; short nurture note with at most 1 question'
+lead:
+  name: Demo Lead Five
+  email: lead.five@example.com
+  phone: 0300-0000005
+  channel: web_form
+  message: Just exploring. Maybe next year for our farm tube well near Kasur.
+expected:
+  route: nurture
+  score_min: 2
+  score_max: 5
+  max_questions: 1
+  not_missing:
+  - contact
+  - property_type
+  - location
+  - timeline

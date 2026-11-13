@@ -21,7 +21,8 @@ Intent = Literal[
     "spam",
     "other",
 ]
-Language = Literal["english", "roman_urdu"]
+Language = Literal["english", "roman_urdu", "urdu"]
+DraftKind = Literal["reply", "nurture"]
 HandoverCategory = Literal["complaint", "legal_threat", "angry", "duplicate", "other"]
 # A draft is never sent by this system: "pending_approval" waits for a human.
 Status = Literal["pending_approval", "needs_human", "nurture", "discarded"]
@@ -57,10 +58,12 @@ class ExtractedFields(BaseModel):
 
     property_type: PropertyType = "unknown"
     monthly_bill_pkr: int | None = None
+    sanctioned_load_kw: int | None = None
     location: str | None = None
     timeline: Timeline = "unknown"
     product_interest: list[str] = Field(default_factory=list)
     quote_requested: bool = False
+    site_visit_requested: bool = False
     urgency: Urgency = "medium"
 
 

@@ -1,0 +1,21 @@
+id: 21_sample_s001_hot_home
+description: 'Sample lead S001: hot home lead; nothing it states may be reported as missing'
+lead:
+  name: Demo Lead One
+  email: lead.one@example.com
+  phone: 0300-0000001
+  channel: web_form
+  message: We have a 1 kanal house in DHA Lahore, monthly bill around 60,000. Need a quote
+    for a 10kW hybrid system this month.
+expected:
+  route: draft_reply
+  score_min: 8
+  score_max: 10
+  not_missing:
+  - property_type
+  - product_interest
+  - contact
+  - location
+  - monthly_bill_pkr
+  language: english
+  max_questions: 3

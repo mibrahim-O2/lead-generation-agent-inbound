@@ -86,10 +86,8 @@ _LATER = (
     r"next year|agle saal|just exploring|only exploring|someday|no rush|not in a hurry"
     r"|baad mein|in future|later\b|6 months|six months|not sure when"
 )
-_QUOTE = (
-    r"quot(e|ation)|site visit|survey|proposal|estimate|\brates?\b|price|pricing|cost"
-    r"|kitn[ae]|qeemat|keemat"
-)
+_QUOTE = r"quot(e|ation)|proposal|estimate|\brates?\b|price|pricing|cost|kitn[ae]|qeemat|keemat"
+_SITE_VISIT = r"site (visit|survey)|\bsurvey\b|\bvisit\b"
 _PRODUCTS = {
     "panels": r"panel",
     "inverter": r"inverter",
@@ -97,6 +95,7 @@ _PRODUCTS = {
     "net metering": r"net[- ]?metering",
     "installation": r"install|lagwa",
     "hybrid system": r"hybrid",
+    "solar system": r"\d\s*kw\b.{0,20}system|solar system|complete system",
     "on-grid system": r"on[- ]?grid",
 }
 _FAQ_TOPICS = {
@@ -115,10 +114,6 @@ _SPAM = (
 _COMPLAINT = (
     r"complain|refund|legal action|lawyer|court|\bsue\b|worst|pathetic|fraud|scam"
     r"|never came|still faulty|not working|fed up|shikayat"
-)
-_ROMAN_URDU = (
-    r"\b(hai|hain|kya|kitn[ae]|chahiye|chahte|karna|lagwan[ae]|bijli|ghar|hamara|mera"
-    r"|aap|bhai|nahi|mein|ka|ki|ke|ko|batayen|batain|qeemat)\b"
 )
 
 
@@ -144,6 +139,16 @@ def _bill_amount(text: str) -> int | None:
     return None
 
 
+def _load_kw(text: str) -> int | None:
+    """A sanctioned or connected load in kW, if one is stated."""
+    number = r"(\d[\d,]*)\s*kw"
+    for pattern in (rf"\bload\D{{0,20}}{number}", rf"{number}\s*(sanctioned|connected)?\s*load"):
+        match = re.search(pattern, text, re.IGNORECASE)
+        if match:
+            return int(match.group(1).replace(",", ""))
+    return None
+
+
 def mock_analyse(message: str) -> dict[str, Any]:
     """Keyword 'understanding' of a message. Stands in for what a real model would infer."""
     text = message.lower()
@@ -157,15 +162,15 @@ def mock_analyse(message: str) -> dict[str, Any]:
         timeline = "within_3_months"
     else:
         timeline = "unknown"
-    quote = _find(_QUOTE, text)
+    quote, site_visit = _find(_QUOTE, text), _find(_SITE_VISIT, text)
     faq_topic = next((k for k, p in _FAQ_TOPICS.items() if _find(p, text)), None)
-    bill = _bill_amount(text)
+    bill, load = _bill_amount(text), _load_kw(text)
 
     if _find(_SPAM, text):
         intent = "spam"
     elif _find(_COMPLAINT, text):
         intent = "complaint"
-    elif _find(r"quot(e|ation)|site visit|survey|proposal|estimate", text):
+    elif site_visit or _find(r"quot(e|ation)|proposal|estimate", text):
         intent = "quote_request"
     elif quote and property_type == "unknown" and bill is None:
         intent = "price_enquiry"
@@ -178,67 +183,62 @@ def mock_analyse(message: str) -> dict[str, Any]:
         "intent": intent,
         "property_type": property_type,
         "monthly_bill_pkr": bill,
+        "sanctioned_load_kw": load,
         "location": city.group(1) if city else None,
         "timeline": timeline,
         "quote_requested": quote,
+        "site_visit_requested": site_visit,
         "product_interest": [k for k, p in _PRODUCTS.items() if _find(p, text)],
         "urgency": {"immediate": "high", "later": "low"}.get(timeline, "medium"),
         "faq_topic": faq_topic,
-        "language": "roman_urdu" if len(re.findall(_ROMAN_URDU, text)) >= 2 else "english",
     }
-
-
-def _missing_fields(analysis: dict[str, Any], lead: dict[str, Any]) -> list[str]:
-    missing = []
-    if analysis["property_type"] == "unknown":
-        missing.append("property_type")
-    if analysis["monthly_bill_pkr"] is None:
-        missing.append("monthly_bill_pkr")
-    if not analysis["location"]:
-        missing.append("location")
-    if analysis["timeline"] == "unknown":
-        missing.append("timeline")
-    if not analysis["product_interest"]:
-        missing.append("product_interest")
-    if not lead.get("email") and not lead.get("phone"):
-        missing.append("contact")
-    return missing
 
 
 def _write_draft(
     analysis: dict[str, Any],
     lead: dict[str, Any],
-    missing: list[str],
+    questions: list[str],
     route: str,
+    language: str,
     profile: dict[str, Any],
     faq: list[dict[str, str]],
     calendar: dict[str, Any] | None,
 ) -> str:
-    """Compose a reply from the tool results. Avoids every forbidden claim."""
-    urdu = analysis["language"] == "roman_urdu"
+    """Compose a reply from the tool results. Avoids every forbidden claim.
+
+    `questions` come from score_lead: already in the reply language and limited
+    to what is really missing.
+    """
+    urdu = language != "english"
     company = profile.get("company", {}).get("name", "our team")
     sign_off = profile.get("tone", {}).get("sign_off", company)
     first_name = (lead.get("name") or "").split(" ")[0]
-    key = "question_roman_urdu" if urdu else "question"
-    questions = [
-        q.get(key) or q["question"]
-        for q in profile.get("qualification_questions", [])
-        if q["field"] in missing
-    ][:4]
+    greeting = "Assalam o Alaikum" if urdu else "Hi"
+    parts = [f"{greeting}{' ' + first_name if first_name else ''},"]
 
-    parts: list[str] = []
+    if route == "nurture":  # short note, at most one question, no list
+        question = f" {questions[0]}" if questions else ""
+        if urdu:
+            parts.append(
+                f"{company} se rabta karne ka shukriya. Koi jaldi nahi hai, jab bhi aap tayyar "
+                f"hon isi message ka jawab de dein aur hum baat aage barha lein ge.{question}"
+            )
+            parts.append(f"Shukriya,\n{sign_off}")
+        else:
+            parts.append(
+                f"Thank you for contacting {company}. There is no rush at all: whenever you "
+                f"are ready, just reply to this message and we will pick it up from there."
+                f"{question}"
+            )
+            parts.append(f"Kind regards,\n{sign_off}")
+        return "\n\n".join(parts)
+
     if urdu:
-        parts.append(f"Assalam o Alaikum{' ' + first_name if first_name else ''},")
         parts.append(f"{company} se rabta karne ka shukriya.")
         if analysis["intent"] == "price_enquiry":
             parts.append(
                 "Qeemat system ke size aur equipment par depend karti hai, is liye hum "
                 "figures sirf written proposal mein share karte hain."
-            )
-        if route == "nurture":
-            parts.append(
-                "Koi jaldi nahi hai. Jab bhi aap tayyar hon, isi message ka jawab de dein "
-                "aur hum wahin se baat aage barha lein ge."
             )
         if questions:
             parts.append(
@@ -252,7 +252,6 @@ def _write_draft(
             )
         parts.append(f"Shukriya,\n{sign_off}")
     else:
-        parts.append(f"Hi{' ' + first_name if first_name else ''},")
         parts.append(f"Thank you for contacting {company}.")
         if analysis["intent"] == "price_enquiry":
             parts.append(
@@ -261,11 +260,6 @@ def _write_draft(
             )
         if faq:
             parts.append(f"About {faq[0]['topic'].lower()}: {faq[0]['answer']}")
-        if route == "nurture":
-            parts.append(
-                "There is no rush at all. Whenever you are ready, just reply to this "
-                "message and we will pick it up from there."
-            )
         if questions:
             parts.append(
                 "To prepare the right proposal for you, could you please share:\n"
@@ -286,8 +280,10 @@ def _get(item: Any, key: str) -> Any:
     return item.get(key) if isinstance(item, dict) else getattr(item, key, None)
 
 
-def _read_conversation(items: str | list[Any]) -> tuple[dict[str, Any], dict[str, Any]]:
-    """Return (lead, tool results so far) from the SDK's input items."""
+def _read_conversation(
+    items: str | list[Any],
+) -> tuple[dict[str, Any], dict[str, str], dict[str, Any]]:
+    """Return (lead, system facts, tool results so far) from the SDK's input items."""
     if isinstance(items, str):
         items = [{"role": "user", "content": items}]
     user_text, names, outputs = "", {}, {}
@@ -302,8 +298,10 @@ def _read_conversation(items: str | list[Any]) -> tuple[dict[str, Any], dict[str
             if isinstance(content, list):
                 content = " ".join(str(_get(part, "text") or "") for part in content)
             user_text = str(content)
-    match = re.search(r"<lead_data>\s*(\{.*\})\s*</lead_data>", user_text, re.DOTALL)
+    match = re.search(r"<lead_data>\s*(\{.*\})\s*</lead_data>(.*)", user_text, re.DOTALL)
     lead = json.loads(match.group(1)) if match else {"message": user_text}
+    # Facts are read only from the text AFTER the data tag, never from the message.
+    facts = dict(re.findall(r"^- (\w+): (\S+)", match.group(2) if match else "", re.MULTILINE))
     done: dict[str, Any] = {}
     for call_id, name in names.items():
         raw = outputs.get(call_id)
@@ -311,38 +309,37 @@ def _read_conversation(items: str | list[Any]) -> tuple[dict[str, Any], dict[str
             done[name] = json.loads(raw) if isinstance(raw, str) else raw
         except json.JSONDecodeError:
             done[name] = {"raw": raw}
-    return lead, done
+    return lead, facts, done
 
 
-def mock_next_step(lead: dict[str, Any], done: dict[str, Any]) -> tuple[str, dict[str, Any]]:
+def mock_next_step(
+    lead: dict[str, Any], facts: dict[str, str], done: dict[str, Any]
+) -> tuple[str, dict[str, Any]]:
     """Decide the next move from what is known so far.
 
     Returns ("tool", {"name": ..., "arguments": {...}}) or ("final", decision).
     """
     analysis = mock_analyse(lead.get("message", ""))
-    missing = _missing_fields(analysis, lead)
+    language = facts.get("reply_language", "english")
+    if language == "urdu":
+        language = "roman_urdu"  # the mock cannot write Urdu script
+    duplicate_of = facts.get("duplicate_of", "none")
     fields = {
-        "property_type": analysis["property_type"],
-        "monthly_bill_pkr": analysis["monthly_bill_pkr"],
-        "location": analysis["location"],
-        "timeline": analysis["timeline"],
-        "quote_requested": analysis["quote_requested"],
-        "product_interest": analysis["product_interest"],
-        "urgency": analysis["urgency"],
-    }
+        key: analysis[key]
+        for key in (
+            "property_type", "monthly_bill_pkr", "sanctioned_load_kw", "location", "timeline",
+            "quote_requested", "site_visit_requested", "product_interest", "urgency",
+        )
+    }  # fmt: skip
+    scored = done.get("score_lead") or {}
+    missing = scored.get("missing_fields", [])
 
     def tool(name: str, **arguments: Any) -> tuple[str, dict[str, Any]]:
         return "tool", {"name": name, "arguments": arguments}
 
     def finish(route: str, summary: str, score: int = 1) -> tuple[str, dict[str, Any]]:
         if "save_lead" not in done:
-            return tool(
-                "save_lead",
-                intent=analysis["intent"],
-                route=route,
-                summary=summary,
-                missing_info=missing if route in ("draft_reply", "nurture") else [],
-            )
+            return tool("save_lead", intent=analysis["intent"], route=route, summary=summary)
         return "final", {
             "intent": analysis["intent"],
             "extracted": fields,
@@ -355,8 +352,6 @@ def mock_next_step(lead: dict[str, Any], done: dict[str, Any]) -> tuple[str, dic
 
     if any("error" in (result or {}) for result in done.values() if isinstance(result, dict)):
         return finish("handover", "Stopped early: a tool reported an error.")
-    if "check_duplicate" not in done:
-        return tool("check_duplicate")
     if analysis["intent"] == "spam":
         return finish("spam", "Looks like spam or an unrelated sales pitch.")
     if analysis["intent"] == "complaint":
@@ -367,39 +362,41 @@ def mock_next_step(lead: dict[str, Any], done: dict[str, Any]) -> tuple[str, dic
                 category="complaint",
             )
         return finish("handover", "Complaint or upset customer. Handed to a human.")
-    if done["check_duplicate"].get("is_duplicate"):
+    if duplicate_of != "none":
         if "flag_handover" not in done:
-            existing = done["check_duplicate"].get("existing_lead_id", "")
             return tool(
                 "flag_handover",
-                reason=f"Same contact as existing lead {existing}; avoid a second reply.",
+                reason=f"Same contact as existing lead {duplicate_of}; avoid a second reply.",
                 category="duplicate",
             )
         return finish("handover", "Repeat enquiry from an existing lead.")
 
     if "score_lead" not in done:
         return tool("score_lead", **fields)
-    score = done["score_lead"].get("score", 1)
-    is_hot = bool(done["score_lead"].get("is_hot"))
+    score = scored.get("score", 1)
+    is_hot = bool(scored.get("is_hot"))
     route = "nurture" if analysis["timeline"] == "later" and not is_hot else "draft_reply"
+    kind = "nurture" if route == "nurture" else "reply"
+    questions = scored.get("questions_to_ask", [])[: scored.get("max_questions", {}).get(kind, 3)]
 
     if "get_company_profile" not in done:
         return tool("get_company_profile")
-    if analysis["faq_topic"] and "search_faq" not in done:
+    if analysis["faq_topic"] and route != "nurture" and "search_faq" not in done:
         return tool("search_faq", query=analysis["faq_topic"])
     if is_hot and "get_calendar_link" not in done:
         return tool("get_calendar_link")
     draft = _write_draft(
         analysis,
         lead,
-        missing,
+        questions,
         route,
+        language,
         done["get_company_profile"],
         (done.get("search_faq") or {}).get("results", []),
         done.get("get_calendar_link"),
     )
     if "draft_reply" not in done:
-        return tool("draft_reply", body=draft, language=analysis["language"])
+        return tool("draft_reply", body=draft, language=language, kind=kind)
     done["_draft"] = draft if done["draft_reply"].get("accepted") else ""
     label = "Hot lead" if is_hot else "Lead"
     return finish(
@@ -465,8 +462,8 @@ class MockModel(Model):
         **kwargs: Any,
     ) -> ModelResponse:
         self._calls += 1
-        lead, done = _read_conversation(input)
-        kind, payload = mock_next_step(lead, done)
+        lead, facts, done = _read_conversation(input)
+        kind, payload = mock_next_step(lead, facts, done)
         prompt_chars = len(system_instructions or "") + len(json.dumps(input, default=str))
         return build_response(kind, payload, self._calls, prompt_chars)
 

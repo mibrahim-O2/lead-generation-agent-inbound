@@ -21,22 +21,26 @@ calendar_link: https://example.com/book-a-call  # placeholder
 tone:
   style: >-
     Warm, respectful and practical. Short sentences, no jargon, no pressure.
-    Reply in the language the customer used (English or Roman Urdu).
-    Ask at most four questions in one reply.
+    Reply in the language the customer used: English for English, Roman Urdu
+    for Roman Urdu. Use Urdu script only if the customer wrote in Urdu script.
   languages: [english, roman_urdu]
   sign_off: Customer Care Team
+  max_questions: 3          # per draft reply
+  max_questions_nurture: 1  # per nurture draft (keep it short)
 
 working_hours:
   timezone: Asia/Karachi
   days: Monday to Saturday
   hours: "09:00 to 18:00"
 
-# The agent asks only the questions whose field is still unknown.
+# Questions the code may hand to the agent, in priority order. The code works
+# out which fields are really missing (from the extracted fields and the contact
+# details on file) and passes on only those, up to tone.max_questions.
 qualification_questions:
-  - field: property_type
-    question: Is the system for a home, a business, a factory or a farm?
-    question_roman_urdu: System ghar, business, factory ya farm ke liye chahiye?
-  - field: monthly_bill_pkr
+  - field: contact            # only when the lead has no email and no phone
+    question: What is the best phone number or email to reach you on?
+    question_roman_urdu: Aap se rabta karne ke liye behtareen number ya email kya hai?
+  - field: monthly_bill_pkr   # skipped when the bill or the sanctioned load is known
     question: Roughly how much is your average monthly electricity bill?
     question_roman_urdu: Aap ka mahana bijli ka bill taqreeban kitna aata hai?
   - field: location
@@ -45,17 +49,37 @@ qualification_questions:
   - field: timeline
     question: When would you like to have the system installed?
     question_roman_urdu: Aap system kab tak lagwana chahte hain?
+  - field: property_type
+    question: Is the system for a home, a business, a factory or a farm?
+    question_roman_urdu: System ghar, business, factory ya farm ke liye chahiye?
   - field: product_interest
     question: >-
       Are you interested in a complete system, or specific items such as
       panels, an inverter or batteries?
     question_roman_urdu: >-
       Aap ko complete system chahiye ya sirf panels, inverter ya battery?
-  - field: contact
-    question: What is the best phone number or email to reach you on?
-    question_roman_urdu: Aap se rabta karne ke liye behtareen number ya email kya hai?
+
+# Code-level safety net: if the model leaves a field unknown but the message
+# clearly states it, these patterns fill it in. They never override the model.
+extraction_hints:
+  property_type:
+    factory: ['\b(factory|textile|mill|industrial|manufacturing|warehouse|cold storage)\b']
+    farm: ['\b(farm|tube ?well|agricultur\w*|dairy|poultry|khet|zameen)\b']
+    business: ['\b(office|shop|school|hospital|restaurant|plaza|commercial|clinic|hotel|showroom|dukaan)\b']
+    home: ['\b(house|home|ghar|makan|kanal|marla|residence|residential|apartment|flat|bungalow|villa)\b']
+  product_interest:
+    panels: ['\bpanels?\b']
+    inverter: ['\binverters?\b']
+    battery: ['\bbatter(y|ies)\b']
+    net metering: ['\bnet[- ]?metering\b']
+    hybrid system: ['\bhybrid\b']
+    on-grid system: ['\bon[- ]?grid\b']
+    solar system: ['\b\d+(\.\d+)?\s*kw\b.{0,20}\bsystem\b', '\bsolar system\b', '\bcomplete system\b']
 
 # Score = sum of points, clamped to 1..10. "Hot" means score >= hot_threshold.
+# Five signals: property type, energy size (bill OR sanctioned load, whichever
+# gives more points), location fit, timeline, intent (quote OR site visit,
+# whichever gives more points).
 scoring:
   hot_threshold: 7
   min_score: 1
@@ -71,6 +95,10 @@ scoring:
       - {min: 100000, points: 3}
       - {min: 50000, points: 2}
       - {min: 20000, points: 1}
+    sanctioned_load_kw:      # sanctioned / connected load in kW, same idea
+      - {min: 100, points: 3}   # industrial scale
+      - {min: 25, points: 2}    # commercial scale
+      - {min: 10, points: 1}    # large home or small shop
     location:                # fit against service_area below
       core: 2
       nearby: 1
@@ -81,7 +109,8 @@ scoring:
       within_3_months: 1
       later: 0
       unknown: 0
-    quote_requested: 1       # asked for a quote, price or site visit
+    quote_requested: 1       # asked for a quote or a price
+    site_visit_requested: 2  # asked for a site visit or survey: strong intent
 
 service_area:
   core: [lahore, dha, gulberg, johar town, model town, bahria, raiwind, cantt]

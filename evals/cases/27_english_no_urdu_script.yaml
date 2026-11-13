@@ -1,0 +1,18 @@
+id: 27_english_no_urdu_script
+description: 'English lead: the reply must stay in English'
+lead:
+  name: Eval Lead 27
+  email: eval27@example.com
+  phone: 0300-1000027
+  channel: web_form
+  message: Hello, I would like to know about batteries for backup at my home in Lahore.
+expected:
+  route: draft_reply
+  score_min: 3
+  score_max: 5
+  language: english
+  max_questions: 3
+  not_missing:
+  - property_type
+  - product_interest
+  - location

@@ -1,0 +1,14 @@
+id: 28_roman_urdu_nurture
+description: 'Roman Urdu lead that is not ready yet: short note, one question at most'
+lead:
+  name: Eval Lead 28
+  email: eval28@example.com
+  phone: 0300-1000028
+  channel: web_form
+  message: Filhal sirf maloomat chahiye, agle saal ghar ke liye solar lagwana hai Lahore mein.
+expected:
+  route: nurture
+  score_min: 3
+  score_max: 5
+  language: roman_urdu
+  max_questions: 1

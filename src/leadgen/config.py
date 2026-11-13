@@ -43,6 +43,8 @@ class Tone(BaseModel):
     style: str = "Warm, clear and professional. Short sentences. No pressure."
     languages: list[str] = Field(default_factory=lambda: ["english", "roman_urdu"])
     sign_off: str = "Team"
+    max_questions: int = 3  # per draft reply
+    max_questions_nurture: int = 1  # per nurture draft
 
 
 class WorkingHours(BaseModel):
@@ -57,17 +59,23 @@ class Question(BaseModel):
     question_roman_urdu: str = ""
 
 
-class BillBand(BaseModel):
+class Band(BaseModel):
+    """Points for a value that reaches `min`."""
+
     min: int
     points: int
 
 
 class Rubric(BaseModel):
     property_type: dict[str, int] = Field(default_factory=dict)
-    monthly_bill_pkr: list[BillBand] = Field(default_factory=list)
+    # Bill and load both measure "how big is the energy need": the better one counts.
+    monthly_bill_pkr: list[Band] = Field(default_factory=list)
+    sanctioned_load_kw: list[Band] = Field(default_factory=list)
     location: dict[str, int] = Field(default_factory=dict)
     timeline: dict[str, int] = Field(default_factory=dict)
+    # A quote and a site visit both show intent: the stronger one counts.
     quote_requested: int = 0
+    site_visit_requested: int = 0
 
 
 class Scoring(BaseModel):
@@ -86,6 +94,23 @@ class PatternRule(BaseModel):
     id: str
     description: str = ""
     patterns: list[str] = Field(default_factory=list)
+
+
+class ExtractionHints(BaseModel):
+    """Regex hints used in code to fill a field the model left unknown.
+
+    Each maps a value to patterns, e.g. property_type: {home: ["\\bkanal\\b"]}.
+    """
+
+    property_type: dict[str, list[str]] = Field(default_factory=dict)
+    product_interest: dict[str, list[str]] = Field(default_factory=dict)
+
+
+class LanguageRules(BaseModel):
+    """How the reply language is detected from the lead's message."""
+
+    roman_urdu_words: list[str] = Field(default_factory=list)
+    min_hits: int = 2  # distinct marker words needed to call a text Roman Urdu
 
 
 class Pricing(BaseModel):
@@ -107,12 +132,78 @@ class RuleBook(BaseModel):
     handover_triggers: list[PatternRule] = Field(default_factory=list)
     forbidden_claims: list[PatternRule] = Field(default_factory=list)
     injection_patterns: list[PatternRule] = Field(default_factory=list)
+    extraction_hints: ExtractionHints = Field(default_factory=ExtractionHints)
+    language: LanguageRules = Field(default_factory=LanguageRules)
+    contact_request_patterns: list[str] = Field(default_factory=list)
     duplicate_route: str = "handover"
     pricing: Pricing = Field(default_factory=Pricing)
 
 
 # Safety rules that apply to every niche. Presets add to these; they merge by id.
 DEFAULTS: dict[str, Any] = {
+    "language": {
+        "roman_urdu_words": [
+            "hai",
+            "hain",
+            "kya",
+            "kitna",
+            "kitne",
+            "kitni",
+            "chahiye",
+            "chahte",
+            "karna",
+            "karwana",
+            "lagwana",
+            "lagwani",
+            "bijli",
+            "ghar",
+            "hamara",
+            "hamari",
+            "mera",
+            "meri",
+            "aap",
+            "apka",
+            "bhai",
+            "nahi",
+            "nahin",
+            "mein",
+            "ka",
+            "ki",
+            "ke",
+            "ko",
+            "se",
+            "hoga",
+            "batayen",
+            "batain",
+            "bata",
+            "dein",
+            "qeemat",
+            "shukriya",
+            "assalam",
+            "yeh",
+            "aur",
+            "liye",
+            "kab",
+            "kahan",
+            "kaise",
+            "bhej",
+            "taqreeban",
+            "sheher",
+            "tak",
+        ],
+        "min_hits": 2,
+    },
+    # A draft matching one of these asks the customer for contact details.
+    "contact_request_patterns": [
+        r"\b(your|best|share|provide|send|give)\b.{0,40}\b(phone|contact|mobile|whatsapp|cell)"
+        r"\s*(number|no\b|details?)",
+        r"\b(your|an)\s+e-?mail(\s+address)?\b[^.?!]{0,60}\?",
+        r"\bbest\b.{0,25}\bto (reach|contact|call) you\b",
+        r"\bhow (can|should|do) we (reach|contact) you\b",
+        r"\brabta karne ke liye\b",
+        r"\b(number|email)\b.{0,30}\b(bata|share kar|bhej|de dein)",
+        r"\b(apna|apni|aap ka|aap ki)\b.{0,20}\b(number|email)\b",
+    ],
     "handover_triggers": [
         {
             "id": "complaint",

@@ -35,8 +35,8 @@ def test_hot_threshold_and_breakdown(rulebook) -> None:
     )
     assert hot.score == 7 and hot.is_hot
     assert hot.breakdown == {
-        "property_type": 2, "monthly_bill": 3, "location_fit": 2, "timeline": 0,
-        "quote_requested": 0,
+        "property_type": 2, "energy_size": 3, "location_fit": 2, "timeline": 0,
+        "intent": 0,
     }  # fmt: skip
     assert not score_fields(ExtractedFields(property_type="business"), rulebook).is_hot
 

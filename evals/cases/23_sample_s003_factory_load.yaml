@@ -1,0 +1,20 @@
+id: 23_sample_s003_factory_load
+description: 'Sample lead S003: textile unit with a 400kW sanctioned load asking for a site
+  visit must be hot'
+lead:
+  name: Demo Lead Three
+  email: lead.three@example.com
+  phone: 0300-0000003
+  channel: webhook
+  message: Textile unit on Raiwind Road, sanctioned load 400kW. Looking at solar with net
+    metering, want a site visit.
+expected:
+  route: draft_reply
+  score_min: 7
+  score_max: 10
+  not_missing:
+  - property_type
+  - monthly_bill_pkr
+  - product_interest
+  - contact
+  max_questions: 3
