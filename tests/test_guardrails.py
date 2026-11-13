@@ -3,7 +3,13 @@ from __future__ import annotations
 import pytest
 
 from leadgen.context import LeadContext
-from leadgen.guardrails import check_draft, finalize, screen_message, wrap_lead_data
+from leadgen.guardrails import (
+    check_draft,
+    detect_language,
+    finalize,
+    screen_message,
+    wrap_lead_data,
+)
 from leadgen.models import ExtractedFields, Lead, LeadDecision
 from leadgen.scoring import score_fields
 from leadgen.storage import MemoryStorage
@@ -108,6 +114,7 @@ def make_ctx(rulebook, lead: Lead, **state) -> LeadContext:
         storage=MemoryStorage(),
         max_tool_calls=12,
         screening=screen_message(lead.message, rulebook),
+        language=detect_language(lead.message, rulebook),
     )
     for key, value in state.items():
         setattr(ctx, key, value)
@@ -126,7 +133,8 @@ def test_complaint_is_forced_to_handover_even_if_the_agent_drafted(rulebook) -> 
 def test_score_comes_from_the_rubric_not_the_model(rulebook, lead) -> None:
     ctx = make_ctx(rulebook, lead, draft="Hi there.")
     record = finalize(ctx, LeadDecision(**decision(score=10)))
-    assert record.score == 1 and not record.is_hot
+    # "house in Lahore" gives 2 points via the code-level hint; the claimed 10 is ignored
+    assert record.score == 2 and not record.is_hot
 
     fields = ExtractedFields(property_type="home", location="Lahore")
     ctx = make_ctx(rulebook, lead, draft="Hi.", extracted=fields)

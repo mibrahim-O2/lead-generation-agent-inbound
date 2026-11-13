@@ -27,7 +27,7 @@ def test_sample_run_end_to_end(settings, rulebook, tmp_path) -> None:
         "S001": "draft_reply", "S002": "draft_reply", "S003": "draft_reply",
         "S004": "handover", "S005": "nurture",
     }  # fmt: skip
-    assert (run.drafts_created, run.handovers, run.nurture, run.hot_leads) == (4, 1, 1, 1)
+    assert (run.drafts_created, run.handovers, run.nurture, run.hot_leads) == (4, 1, 1, 2)
     assert run.total_tokens == run.input_tokens + run.output_tokens > 0
     assert run.cost_estimate_usd is not None and run.cost_estimate_usd > 0
     assert (run.provider, run.dry_run) == ("mock", False)
