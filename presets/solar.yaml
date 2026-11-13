@@ -1,0 +1,8 @@
+# Niche preset: solar equipment + installation.
+# Layer 2 of the config stack: defaults -> niche preset -> client values.
+# Scaffold only - the full rule book (qualification questions, scoring rubric,
+# handover triggers, forbidden claims, tone, working hours) lands in the
+# core-agent task.
+niche: solar
+scoring:
+  hot_threshold: 7

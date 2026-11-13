@@ -1,0 +1,9 @@
+# Client values (layer 3): override anything from the niche preset here.
+# FICTIONAL demo company - every detail below is a placeholder.
+company:
+  name: Example Solar Co
+  city: Lahore
+  email: hello@example.com
+  phone: "+92 000 0000000"
+  website: https://example.com
+calendar_link: https://example.com/book-a-call
