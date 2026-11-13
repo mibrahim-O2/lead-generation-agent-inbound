@@ -5,7 +5,15 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from leadgen.config import RuleBook
-from leadgen.models import DraftKind, ExtractedFields, Language, Lead, LeadRecord, ScoreResult
+from leadgen.models import (
+    DraftKind,
+    ExtractedFields,
+    Language,
+    Lead,
+    LeadRecord,
+    RejectedDraft,
+    ScoreResult,
+)
 from leadgen.storage import Storage
 
 
@@ -40,7 +48,7 @@ class LeadContext:
     draft_language: Language = "english"
     draft_kind: DraftKind = "reply"
     hints_applied: list[str] = field(default_factory=list)
-    rejected_drafts: list[str] = field(default_factory=list)
+    rejected_drafts: list[RejectedDraft] = field(default_factory=list)
     handover_reason: str = ""
     proposal: dict | None = None  # what the agent passed to save_lead
     record: LeadRecord | None = None

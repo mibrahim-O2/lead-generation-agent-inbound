@@ -45,6 +45,7 @@ class Tone(BaseModel):
     sign_off: str = "Team"
     max_questions: int = 3  # per draft reply
     max_questions_nurture: int = 1  # per nurture draft
+    max_chars_nurture: int = 700  # a nurture draft is a short note
 
 
 class WorkingHours(BaseModel):
@@ -94,6 +95,24 @@ class PatternRule(BaseModel):
     id: str
     description: str = ""
     patterns: list[str] = Field(default_factory=list)
+    fix: str = ""  # told to the model when a draft breaks this rule
+    # True: a negated statement ("we cannot say it will be approved") is not a claim.
+    allow_negated: bool = False
+
+
+class NurtureRules(BaseModel):
+    """When a genuine lead is routed to nurture. Decided in code, never by the model.
+
+    A lead is nurture when its timeline is one of `timelines`, its score is at
+    most `max_score` and below the hot threshold, and it did not ask for a
+    quote / site visit (when the matching block_* flag is on).
+    """
+
+    enabled: bool = True
+    timelines: list[str] = Field(default_factory=lambda: ["later"])
+    max_score: int = 5
+    block_if_quote_requested: bool = True
+    block_if_site_visit_requested: bool = True
 
 
 class ExtractionHints(BaseModel):
@@ -104,6 +123,7 @@ class ExtractionHints(BaseModel):
 
     property_type: dict[str, list[str]] = Field(default_factory=dict)
     product_interest: dict[str, list[str]] = Field(default_factory=dict)
+    timeline: dict[str, list[str]] = Field(default_factory=dict)
 
 
 class LanguageRules(BaseModel):
@@ -134,7 +154,11 @@ class RuleBook(BaseModel):
     injection_patterns: list[PatternRule] = Field(default_factory=list)
     extraction_hints: ExtractionHints = Field(default_factory=ExtractionHints)
     language: LanguageRules = Field(default_factory=LanguageRules)
+    # A sentence asks for contact details when it matches a request pattern and is
+    # not a plain statement about what we will do with details already on file.
     contact_request_patterns: list[str] = Field(default_factory=list)
+    contact_statement_patterns: list[str] = Field(default_factory=list)
+    nurture: NurtureRules = Field(default_factory=NurtureRules)
     duplicate_route: str = "handover"
     pricing: Pricing = Field(default_factory=Pricing)
 
@@ -194,15 +218,25 @@ DEFAULTS: dict[str, Any] = {
         "min_hits": 2,
     },
     # A draft matching one of these asks the customer for contact details.
+    # Applied sentence by sentence. A draft sentence asks for contact details when
+    # it matches one of these...
     "contact_request_patterns": [
-        r"\b(your|best|share|provide|send|give)\b.{0,40}\b(phone|contact|mobile|whatsapp|cell)"
-        r"\s*(number|no\b|details?)",
-        r"\b(your|an)\s+e-?mail(\s+address)?\b[^.?!]{0,60}\?",
+        r"\b(share|provide|give|send|tell|confirm|leave|drop|let us know|bata|bhej)\b.{0,40}"
+        r"((phone|mobile|cell|contact|whatsapp)\s*(number|no\b|details?)|e-?mail)",
+        r"((phone|mobile|cell|contact|whatsapp)\s*(number|no\b|details?)|e-?mail(\s+address)?)"
+        r"[^.!?]{0,80}\?",
         r"\bbest\b.{0,25}\bto (reach|contact|call) you\b",
         r"\bhow (can|should|do) we (reach|contact) you\b",
-        r"\brabta karne ke liye\b",
-        r"\b(number|email)\b.{0,30}\b(bata|share kar|bhej|de dein)",
-        r"\b(apna|apni|aap ka|aap ki)\b.{0,20}\b(number|email)\b",
+        r"\brabta karne ke liye\b.{0,60}\b(number|email)\b",
+        r"\b(number|email)\b.{0,30}\b(kya hai|bata|share kar|de dein|bhej dein)\b",
+    ],
+    # ...unless the text before the match (or the sentence) shows it is a statement,
+    # e.g. "We will call you on your phone number" or "the email you provided".
+    "contact_statement_patterns": [
+        r"\b(we|i|our team|our engineer)\b\s*('ll|will|shall|can|could|would|may)\b",
+        r"\b(hum|hamari team)\b",
+        r"\bon file\b",
+        r"\byou (provided|gave|shared|mentioned|sent)\b",
     ],
     "handover_triggers": [
         {
@@ -241,16 +275,21 @@ DEFAULTS: dict[str, Any] = {
         {
             "id": "price",
             "description": "Stating or promising a price",
+            "fix": "Remove every price and rupee amount. Say figures come in a written "
+            "proposal after a site survey. Only the customer's own bill may be restated.",
             "patterns": [
-                r"\b(rs\.?|pkr|rupees)\s*[\d,.]+",
-                r"\b[\d,.]+\s*(rs|pkr|rupees|lakh|lac|lacs|million)\b",
-                r"\b(price|cost|rate) (is|will be|would be|starts)\b",
-                r"\bcosts? (only|just|around|about)\b",
+                r"\b(rs\.?|pkr|rupees)\s*[\d,.]*\d",
+                r"\b\d[\d,.]*\s*(rs|pkr|rupees|lakh|lac|lacs|crore|million)\b",
+                # "the price will be confirmed in a proposal" is fine; a figure is not
+                r"\b(price|cost|rate)s? (is|are|will be|would be|comes to|starts?( at| from)?)\s+"
+                r"(only |just |around |about |approximately |roughly )?(rs|pkr|\d)",
+                r"\bcosts? (only |just |around |about |approximately |roughly )?(rs|pkr|\d)",
             ],
         },
         {
             "id": "savings",
             "description": "Promising savings or payback",
+            "fix": "Remove any statement about savings, bill reduction, percentages or payback.",
             "patterns": [
                 r"\byou('ll| will| can)\b.{0,40}\bsav(e|ing|ings)\b",
                 r"\b\d+\s*(%|percent)",
@@ -262,20 +301,31 @@ DEFAULTS: dict[str, Any] = {
         {
             "id": "delivery_date",
             "description": "Promising a delivery or installation date",
+            "fix": "Remove every date and timeframe, even one the customer gave. Say the "
+            "schedule is shared after the site survey.",
             "patterns": [
-                r"\b(within|in)\s+\d+\s+(working |business )?(day|week|month)s?\b",
-                r"\b(installed|delivered|completed|ready|done) (by|within|in)\b",
-                r"\bby (tomorrow|next week|next month|monday|friday)\b",
+                r"\b(within|in)\s+(\d+|a|one|two|three|four|a few|a couple of)\s+"
+                r"(working |business )?(day|week|month)s?\b",
+                # "done by our team" and "installed in Lahore" are fine; a time is not
+                r"\b(installed|delivered|completed|ready|done|finished)\s+(by|within|in)\s+"
+                r"(\d|a (day|week|month|few|couple)|one|two|three|next|this|tomorrow|the end|"
+                r"monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b",
+                r"\bby (tomorrow|next (week|month)|this (week|month)|the end of|monday|tuesday|"
+                r"wednesday|thursday|friday|saturday|sunday)\b",
             ],
         },
         {
             "id": "guarantee",
             "description": "Guarantees of any kind",
+            "fix": 'Do not use "guarantee" or "promise" at all, not even to say something '
+            "is not guaranteed. Rephrase without those words.",
             "patterns": [r"\bguarantee(d|s)?\b", r"\b(we|i) promise\b", r"\b100\s*%"],
         },
         {
             "id": "advice",
             "description": "Electrical, legal or tax advice",
+            "fix": "Remove the electrical, legal or tax advice. Say our team covers this "
+            "during the site survey.",
             "patterns": [
                 r"\btax (credit|deduction|exemption|rebate|benefit)s?\b",
                 r"\b(legally|by law) (you|required|allowed)\b",
@@ -286,6 +336,7 @@ DEFAULTS: dict[str, Any] = {
         {
             "id": "sent",
             "description": "Claiming something was already sent (this system only drafts)",
+            "fix": "Do not say anything was sent. Nothing has been sent yet.",
             "patterns": [r"\b(we|i) (have|'ve) (sent|emailed|dispatched)\b"],
         },
     ],

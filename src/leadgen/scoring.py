@@ -85,9 +85,29 @@ def apply_hints(
         found = [value for value, patterns in hints.product_interest.items() if matches(patterns)]
         if found:
             update["product_interest"] = found
+    if fields.timeline == "unknown":
+        for value, patterns in hints.timeline.items():
+            if matches(patterns):
+                update["timeline"] = value
+                break
     if not update:
         return fields, []
     return fields.model_copy(update=update), sorted(update)
+
+
+def is_nurture(fields: ExtractedFields, score: ScoreResult, rulebook: RuleBook) -> bool:
+    """Whether a genuine lead is "not ready yet". Decided from facts, never by the model.
+
+    A hot lead is never nurture, whatever the other rules say.
+    """
+    rules = rulebook.nurture
+    if not rules.enabled or score.is_hot or score.score > rules.max_score:
+        return False
+    if fields.timeline not in rules.timelines:
+        return False
+    if rules.block_if_quote_requested and fields.quote_requested:
+        return False
+    return not (rules.block_if_site_visit_requested and fields.site_visit_requested)
 
 
 def missing_fields(fields: ExtractedFields, lead: Lead, rulebook: RuleBook) -> list[str]:

@@ -74,6 +74,20 @@ class ScoreResult(BaseModel):
     location_fit: Literal["core", "nearby", "outside", "unknown"]
 
 
+class DraftProblem(BaseModel):
+    """One reason a draft was rejected, with what to change."""
+
+    check: str  # price, savings, delivery_date, language, questions, contact, length, ...
+    found: str = ""  # the offending text, when there is one
+    fix: str = ""  # exactly what to change
+
+
+class RejectedDraft(BaseModel):
+    attempt: int
+    problems: list[DraftProblem]
+    body: str
+
+
 class LeadDecision(BaseModel):
     """The agent's final answer for one lead (its structured output)."""
 
@@ -105,6 +119,7 @@ class LeadRecord(BaseModel):
     duplicate_of: str = ""
     flags: list[str] = Field(default_factory=list)
     guardrail_notes: list[str] = Field(default_factory=list)
+    rejected_drafts: list[RejectedDraft] = Field(default_factory=list)
     tool_calls: list[str] = Field(default_factory=list)
     run_id: str = ""
     processed_at: str = Field(default_factory=now_iso)

@@ -375,9 +375,8 @@ def mock_next_step(
         return tool("score_lead", **fields)
     score = scored.get("score", 1)
     is_hot = bool(scored.get("is_hot"))
-    route = "nurture" if analysis["timeline"] == "later" and not is_hot else "draft_reply"
-    kind = "nurture" if route == "nurture" else "reply"
-    questions = scored.get("questions_to_ask", [])[: scored.get("max_questions", {}).get(kind, 3)]
+    route = "nurture" if scored.get("draft_kind") == "nurture" else "draft_reply"
+    questions = scored.get("questions_to_ask", [])
 
     if "get_company_profile" not in done:
         return tool("get_company_profile")
@@ -396,7 +395,7 @@ def mock_next_step(
         done.get("get_calendar_link"),
     )
     if "draft_reply" not in done:
-        return tool("draft_reply", body=draft, language=language, kind=kind)
+        return tool("draft_reply", body=draft, language=language)
     done["_draft"] = draft if done["draft_reply"].get("accepted") else ""
     label = "Hot lead" if is_hot else "Lead"
     return finish(

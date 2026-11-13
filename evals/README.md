@@ -67,8 +67,43 @@ language, question count and tokens per case.
 - It refuses to run when the `CI` environment variable is set, and it is not
   part of `make test` or the CI workflow.
 
-To try a few cases first:
+### Retrying one case
+
+```bash
+make evals-live-case CASE=01_hot_home
+```
+
+Runs a single case on the real model, which is the cheap way to retry a
+failure (roughly 10,000 to 20,000 tokens for one case). The case id is the
+file name without `.yaml`. To run a group instead, use a filter:
 
 ```bash
 python -m leadgen.evals --live --filter sample_s00 --max-leads 5
 ```
+
+### Reading the output
+
+Under each row the table shows why a lead ended where it did:
+
+```
+FAIL  01_hot_home                  handover     9 (8-10)   -          0   15234
+        - route handover, expected draft_reply
+        > handover reason: No approved draft: 2 rejected (attempt 1: price (Rs 900,000) | attempt 2: contact (...))
+        > rejected draft #1:
+        >   - price (found: Rs 900,000) -> Remove every price and rupee amount. ...
+```
+
+- `handover reason` is shown for every lead that ends in handover.
+- `rejected draft #N` lists each draft the checks refused, with the check that
+  failed (`price`, `savings`, `delivery_date`, `guarantee`, `advice`, `sent`,
+  `net_metering_approval`, `language`, `questions`, `length`, `contact`), the
+  text that triggered it, and the fix the model was told to make.
+
+### The JSON report
+
+Every live run also writes `data/runtime/live-eval-report.json` (git-ignored;
+it follows `LEADGEN_DATA_DIR`). Each run overwrites the previous report. Per
+case it holds: case id, pass or fail with the failures, route, score, handover
+reason, rejected drafts with their problems and full text, the final draft,
+tools used, flags, guardrail notes and tokens. The mock run (`make evals`)
+does not write a report.
