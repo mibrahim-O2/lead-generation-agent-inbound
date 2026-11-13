@@ -16,8 +16,9 @@ from agents import RunContextWrapper, function_tool
 
 from leadgen.config import project_root
 from leadgen.context import LeadContext
-from leadgen.guardrails import check_draft, finalize
+from leadgen.guardrails import check_draft, check_draft_style, finalize, max_questions
 from leadgen.models import (
+    DraftKind,
     ExtractedFields,
     HandoverCategory,
     Intent,
@@ -27,7 +28,7 @@ from leadgen.models import (
     Timeline,
     Urgency,
 )
-from leadgen.scoring import score_fields
+from leadgen.scoring import apply_hints, missing_fields, questions_for, score_fields
 
 Ctx = RunContextWrapper[LeadContext]
 
@@ -82,7 +83,11 @@ def faq_lookup(query: str, path: str | None = None, limit: int = 2) -> list[dict
 
 @function_tool
 def get_company_profile(wrapper: Ctx) -> str:
-    """Get the company's name, services, customers, tone and working hours."""
+    """Get the company's name, services, customers, tone and working hours.
+
+    Use it for the sign-off and for facts about the company. The questions to ask
+    come from score_lead, not from here.
+    """
     ctx = wrapper.context
     if error := _over_budget(ctx, "get_company_profile"):
         return error
@@ -92,7 +97,6 @@ def get_company_profile(wrapper: Ctx) -> str:
             "company": book.company.model_dump(),
             "tone": book.tone.model_dump(),
             "working_hours": book.working_hours.model_dump(),
-            "qualification_questions": [q.model_dump() for q in book.qualification_questions],
         }
     )
 
@@ -112,12 +116,17 @@ def search_faq(wrapper: Ctx, query: str) -> str:
 
 @function_tool
 def check_duplicate(wrapper: Ctx) -> str:
-    """Check whether this person (same email or phone) already has a stored lead."""
+    """Details of an earlier lead from the same person (same email or phone), if any.
+
+    The system already ran this check before you started: the result is the
+    duplicate_of line in SYSTEM FACTS. Call this only if you want the details.
+    """
     ctx = wrapper.context
     if error := _over_budget(ctx, "check_duplicate"):
         return error
     existing = ctx.storage.find_duplicate(ctx.lead)
-    ctx.duplicate_of = existing.lead.id if existing else ""
+    # Never clears a duplicate the system already found before the run.
+    ctx.duplicate_of = existing.lead.id if existing else ctx.duplicate_of
     if not existing:
         return _json({"is_duplicate": False})
     return _json(
@@ -135,48 +144,79 @@ def score_lead(
     wrapper: Ctx,
     property_type: PropertyType,
     monthly_bill_pkr: int | None,
+    sanctioned_load_kw: int | None,
     location: str | None,
     timeline: Timeline,
     quote_requested: bool,
+    site_visit_requested: bool,
     product_interest: list[str],
     urgency: Urgency,
 ) -> str:
-    """Score the lead from 1 to 10 with the company rubric. Pass only what the message says.
+    """Score the lead from 1 to 10 and get the questions worth asking.
+
+    Pass only what the message says. The result tells you which fields are still
+    missing and gives the exact questions to ask, already in the reply language.
 
     Args:
-        property_type: home, business, factory, farm, or unknown.
+        property_type: home, business, factory, farm, or unknown. A "kanal" or
+            "marla" house is a home; a textile unit or mill is a factory.
         monthly_bill_pkr: Monthly electricity bill in rupees, or null if not stated.
+        sanctioned_load_kw: Sanctioned or connected load in kW, or null if not
+            stated. This is the load of the connection, not the size of the solar
+            system they want.
         location: City or area as written by the lead, or null if not stated.
         timeline: immediate (this month), within_3_months, later, or unknown.
-        quote_requested: True if they asked for a quote, a price or a site visit.
-        product_interest: Products mentioned, e.g. ["panels", "battery"].
+        quote_requested: True if they asked for a quote, a proposal or a price.
+        site_visit_requested: True if they asked for a site visit or a survey.
+        product_interest: Products or system types mentioned, e.g. ["panels"],
+            ["10kW hybrid system"], ["net metering"]. Empty only if none.
         urgency: low, medium or high.
     """
     ctx = wrapper.context
     if error := _over_budget(ctx, "score_lead"):
         return error
-    ctx.extracted = ExtractedFields(
+    given = ExtractedFields(
         property_type=property_type,
         monthly_bill_pkr=monthly_bill_pkr,
+        sanctioned_load_kw=sanctioned_load_kw,
         location=location,
         timeline=timeline,
         product_interest=product_interest,
         quote_requested=quote_requested,
+        site_visit_requested=site_visit_requested,
         urgency=urgency,
     )
+    # Safety net: fill what the message clearly states but the model left unknown.
+    ctx.extracted, ctx.hints_applied = apply_hints(given, ctx.lead.message, ctx.rulebook)
     ctx.score = score_fields(ctx.extracted, ctx.rulebook)
-    return _json({**ctx.score.model_dump(), "hot_threshold": ctx.rulebook.scoring.hot_threshold})
+    missing = missing_fields(ctx.extracted, ctx.lead, ctx.rulebook)
+    return _json(
+        {
+            **ctx.score.model_dump(),
+            "hot_threshold": ctx.rulebook.scoring.hot_threshold,
+            "missing_fields": missing,
+            "questions_to_ask": questions_for(missing, ctx.language, ctx.rulebook),
+            "max_questions": {
+                "reply": max_questions("reply", ctx.rulebook),
+                "nurture": max_questions("nurture", ctx.rulebook),
+            },
+            "reply_language": ctx.language,
+        }
+    )
 
 
 @function_tool
-def draft_reply(wrapper: Ctx, body: str, language: Language) -> str:
+def draft_reply(wrapper: Ctx, body: str, language: Language, kind: DraftKind) -> str:
     """Store a DRAFT reply for human approval. Nothing is sent to the customer.
 
-    The draft is rejected if it contains a forbidden claim; fix it and call again.
+    The draft is rejected if it contains a forbidden claim, is in the wrong
+    language, asks too many questions, or asks for contact details that are
+    already on file. Fix the problems listed and call again.
 
     Args:
         body: The full reply text.
-        language: english or roman_urdu, matching the customer's message.
+        language: The language the body is written in. Must match reply_language.
+        kind: "reply" for a normal reply, "nurture" for a short keep-in-touch note.
     """
     ctx = wrapper.context
     if error := _over_budget(ctx, "draft_reply"):
@@ -184,18 +224,19 @@ def draft_reply(wrapper: Ctx, body: str, language: Language) -> str:
     body = body.strip()
     if not body:
         return _json({"accepted": False, "problems": ["empty draft"]})
-    problems = check_draft(body, ctx.rulebook)
+    descriptions = {rule.id: rule.description for rule in ctx.rulebook.forbidden_claims}
+    problems = [f"{p}: {descriptions.get(p, '')}" for p in check_draft(body, ctx.rulebook)]
+    problems += check_draft_style(body, language, kind, ctx)
     if problems:
         ctx.rejected_drafts.append(body)
-        descriptions = {rule.id: rule.description for rule in ctx.rulebook.forbidden_claims}
         return _json(
             {
                 "accepted": False,
-                "problems": [f"{p}: {descriptions.get(p, '')}" for p in problems],
-                "hint": "Remove these claims and call draft_reply again.",
+                "problems": problems,
+                "hint": "Fix these problems and call draft_reply again.",
             }
         )
-    ctx.draft, ctx.draft_language = body, language
+    ctx.draft, ctx.draft_language, ctx.draft_kind = body, language, kind
     return _json({"accepted": True, "status": "draft stored for human approval; not sent"})
 
 
@@ -229,26 +270,18 @@ def get_calendar_link(wrapper: Ctx) -> str:
 
 
 @function_tool
-def save_lead(
-    wrapper: Ctx, intent: Intent, route: Route, summary: str, missing_info: list[str]
-) -> str:
+def save_lead(wrapper: Ctx, intent: Intent, route: Route, summary: str) -> str:
     """Save the lead with your decision. Call this once, after scoring and drafting.
 
     Args:
         intent: What the person wants.
         route: draft_reply, handover, nurture or spam.
         summary: One or two sentences for the human reviewer.
-        missing_info: Fields still unknown, e.g. ["monthly_bill_pkr", "timeline"].
     """
     ctx = wrapper.context
     if error := _over_budget(ctx, "save_lead"):
         return error
-    ctx.proposal = {
-        "intent": intent,
-        "route": route,
-        "summary": summary.strip(),
-        "missing_info": missing_info,
-    }
+    ctx.proposal = {"intent": intent, "route": route, "summary": summary.strip()}
     ctx.record = finalize(ctx, None)
     ctx.storage.save_record(ctx.record)
     return _json(
@@ -257,6 +290,7 @@ def save_lead(
             "lead_id": ctx.lead.id,
             "route": ctx.record.route,
             "score": ctx.record.score,
+            "missing_info": ctx.record.missing_info,
             "notes": ctx.record.guardrail_notes,
         }
     )
