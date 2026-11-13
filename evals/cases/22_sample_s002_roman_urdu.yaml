@@ -1,0 +1,17 @@
+id: 22_sample_s002_roman_urdu
+description: 'Sample lead S002: Roman Urdu price question; reply in Roman Urdu with at most
+  3 questions'
+lead:
+  name: Demo Lead Two
+  email: lead.two@example.com
+  phone: 0300-0000002
+  channel: web_form
+  message: solar ka kya rate hai?
+expected:
+  route: draft_reply
+  score_min: 1
+  score_max: 3
+  language: roman_urdu
+  max_questions: 3
+  not_missing:
+  - contact

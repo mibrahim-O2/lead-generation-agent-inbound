@@ -1,0 +1,16 @@
+id: 26_load_only_business
+description: Commercial lead that gives a connected load instead of a bill
+lead:
+  name: Eval Lead 26
+  email: eval26@example.com
+  phone: 0300-1000026
+  channel: web_form
+  message: We run a cold storage warehouse in Sheikhupura with a connected load of 150 kW.
+    Please arrange a site survey.
+expected:
+  route: draft_reply
+  score_min: 7
+  score_max: 10
+  not_missing:
+  - monthly_bill_pkr
+  - property_type

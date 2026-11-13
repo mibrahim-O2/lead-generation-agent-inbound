@@ -1,0 +1,13 @@
+id: 24_sample_s004_complaint
+description: 'Sample lead S004: complaint with a legal threat goes to a human'
+lead:
+  name: Demo Lead Four
+  email: lead.four@example.com
+  phone: 0300-0000004
+  channel: web_form
+  message: Your installer never came back and my inverter is still faulty. Fix it or I will
+    take legal action.
+expected:
+  route: handover
+  score_min: 1
+  score_max: 4
