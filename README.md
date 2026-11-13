@@ -60,7 +60,22 @@ make test
 make evals
 ```
 
-Both run without a key.
+Both run without a key. `make evals-live` is an optional extra that runs the same
+eval cases on your real model, with caps on leads and tokens; see
+[evals/README.md](evals/README.md). It costs tokens and never runs in CI.
+
+### How a lead is scored
+
+Five signals from `presets/solar.yaml`, added up and clamped to 1-10. A lead is hot
+at 7 or more.
+
+| Signal | Points |
+| --- | --- |
+| Property type | factory 3; business, farm or home 2 |
+| Energy size | monthly bill OR sanctioned load in kW, whichever gives more (up to 3) |
+| Location fit | core area 2, nearby 1 |
+| Timeline | this month 2, within 3 months 1 |
+| Intent | site visit or survey 2, quote or price request 1 |
 
 ## Running with a real model
 
@@ -111,6 +126,15 @@ behaving:
 - Complaints, anger, legal threats and safety incidents are detected in code on the
   raw message and force a human handover, whatever the agent decided.
 - The score always comes from the rubric in `presets/solar.yaml`, never from the model.
+- The duplicate check runs in code before the agent starts. It does not depend on
+  the agent calling a tool.
+- What is "missing" is worked out in code from the extracted fields and the contact
+  details on file, so a stated fact is never asked for again. The questions the
+  agent may ask come from that list.
+- `draft_reply` also rejects a draft in the wrong language (English for English,
+  Roman Urdu for Roman Urdu, Urdu script only if the lead used it), a draft with
+  more than 3 questions (1 for a nurture note), and a draft asking for contact
+  details that are already on file.
 - The message is wrapped as untrusted data and screened for injection attempts;
   suspicious leads go to a human.
 - Limits on leads per run, tool calls per lead and tokens per run stop a runaway run.
