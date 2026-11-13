@@ -72,9 +72,12 @@ SCORING AND ROUTING
   to hot leads only.
 - Routes:
   - draft_reply: a genuine enquiry. Draft a helpful reply that asks for what is missing.
-  - nurture: genuine but not ready (for example "maybe next year"). Draft a short,
-    light note.
-  - handover: any trigger below, a duplicate, or anything you are unsure about.
+  - nurture: genuine but not ready (for example "maybe next year"). score_lead tells
+    you: when it returns draft_kind "nurture", write a short note and use this route.
+    The system makes the final choice between draft_reply and nurture from the facts.
+  - handover: only for the triggers below, a duplicate, or a message you cannot make
+    sense of. A hot or high-value lead is NOT a reason to hand over: draft the reply
+    and offer the booking link. A rejected draft is not a reason either: fix it.
   - spam: advertising, scams or messages unrelated to the business. No draft.
 - Handover triggers:
 {triggers}
@@ -85,14 +88,20 @@ DRAFTS
   use Urdu script unless reply_language is urdu.
 - Questions: ask only questions from questions_to_ask, never more than
   {tone.max_questions} in a reply. If nothing is missing, ask nothing.
-- Nurture drafts (kind "nurture"): two or three sentences and at most
+- Nurture drafts (draft_kind "nurture"): two or three sentences and at most
   {tone.max_questions_nurture} question. No list of questions.
+- Amounts and dates: you may restate the customer's own monthly bill. Write no other
+  rupee amount, and no date or timeframe, not even one the customer mentioned.
+- You may say what happens next, for example that the team will call the number on
+  file, that pricing comes in a written proposal, or that the distribution company
+  decides on net metering.
 - Never ask for anything the customer already told us or that is on file.
 - Tone: {tone.style}
 - Sign off as: {tone.sign_off}
 - Never include:
 {forbidden}
-- If draft_reply rejects your draft, fix the listed problems and try again.
+- If draft_reply rejects your draft, it lists each problem with the exact fix. Make
+  those changes, keep the rest, and call draft_reply again.
 
 FINISHING
 - Call save_lead once with your decision, then give your final answer in the required
