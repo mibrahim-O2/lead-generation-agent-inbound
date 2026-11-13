@@ -60,9 +60,18 @@ make test
 make evals
 ```
 
-Both run without a key. `make evals-live` is an optional extra that runs the same
-eval cases on your real model, with caps on leads and tokens; see
-[evals/README.md](evals/README.md). It costs tokens and never runs in CI.
+Both run without a key.
+
+Two optional commands run the eval cases on your real model. They cost tokens,
+have caps on leads and tokens, and never run in CI or in `make test`:
+
+| Command | What it does |
+| --- | --- |
+| `make evals-live` | All eval cases on the real model. Prints a table and writes `data/runtime/live-eval-report.json`. |
+| `make evals-live-case CASE=01_hot_home` | One case only: the cheap way to retry a failure. |
+
+The table shows the handover reason for every handover and every rejected draft
+with the check that failed. See [evals/README.md](evals/README.md).
 
 ### How a lead is scored
 
@@ -126,6 +135,12 @@ behaving:
 - Complaints, anger, legal threats and safety incidents are detected in code on the
   raw message and force a human handover, whatever the agent decided.
 - The score always comes from the rubric in `presets/solar.yaml`, never from the model.
+- Whether a genuine lead is `draft_reply` or `nurture` is decided in code from the
+  facts (the `nurture` block in `presets/solar.yaml`): a "later" timeline, no quote
+  or site visit requested, and a score of 5 or less. A hot lead is never nurture.
+- Every rejected draft is recorded with its attempt number, the check that failed
+  and the fix the agent was told to make. Every handover carries its reason. Both
+  appear in the run output and in the saved record.
 - The duplicate check runs in code before the agent starts. It does not depend on
   the agent calling a tool.
 - What is "missing" is worked out in code from the extracted fields and the contact
@@ -134,7 +149,9 @@ behaving:
 - `draft_reply` also rejects a draft in the wrong language (English for English,
   Roman Urdu for Roman Urdu, Urdu script only if the lead used it), a draft with
   more than 3 questions (1 for a nurture note), and a draft asking for contact
-  details that are already on file.
+  details that are already on file. Restating the customer's own bill, saying the
+  team will call the number on file, or saying that pricing comes in a written
+  proposal is allowed; any other rupee amount, date or timeframe is not.
 - The message is wrapped as untrusted data and screened for injection attempts;
   suspicious leads go to a human.
 - Limits on leads per run, tool calls per lead and tokens per run stop a runaway run.
