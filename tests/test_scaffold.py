@@ -35,6 +35,8 @@ def test_cli_flags(capsys: pytest.CaptureFixture[str]) -> None:
     assert (args.source, args.limit, args.dry_run) == ("file", 3, True)
     assert main(["--dry-run"]) == 0
     assert "dry run" in capsys.readouterr().out
+    with pytest.raises(SystemExit):
+        build_parser().parse_args(["--limit", "0"])
 
 
 def _env_assignments() -> dict[str, str]:

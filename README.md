@@ -31,7 +31,7 @@ A new enquiry arrives (web form, webhook, or a row from `data/sample_leads.csv`)
 
 | Task | Branch | State |
 | --- | --- | --- |
-| 1. Scaffold | `feat/scaffold` | this PR |
+| 1. Scaffold | `feat/scaffold` | done |
 | 2. Core agent, tools, evals, API server | `feat/core-agent` | planned |
 | 3. Provider switch (`llm.py`, `MODEL_SWITCH.md`) | `feat/model-switch` | planned |
 | 4. Dashboard (React + Vite, GitHub Pages) | `feat/dashboard` | planned |
