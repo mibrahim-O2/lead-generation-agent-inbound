@@ -1,0 +1,13 @@
+id: 04_factory
+description: Large factory lead
+lead:
+  name: Eval Lead 04
+  email: eval04@example.com
+  phone: 0300-1000004
+  channel: web_form
+  message: We run a textile factory on Raiwind Road, Lahore. Our monthly bill is around 15
+    lakh. We want a proposal for solar with net metering as soon as possible.
+expected:
+  route: draft_reply
+  score_min: 9
+  score_max: 10

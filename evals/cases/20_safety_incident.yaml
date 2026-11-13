@@ -1,0 +1,13 @@
+id: 20_safety_incident
+description: Safety incident the model may miss; the code-level trigger must catch it
+lead:
+  name: Eval Lead 20
+  email: eval20@example.com
+  phone: 0300-1000020
+  channel: web_form
+  message: Sparks are coming from the inverter you installed, there was a short circuit last
+    night!
+expected:
+  route: handover
+  score_min: 1
+  score_max: 4

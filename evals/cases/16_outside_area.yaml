@@ -1,0 +1,13 @@
+id: 16_outside_area
+description: Decent lead outside the service area
+lead:
+  name: Eval Lead 16
+  email: eval16@example.com
+  phone: 0300-1000016
+  channel: web_form
+  message: Need a 5kW system for my house in Karachi. Monthly bill 30,000. Please send a quote
+    this month.
+expected:
+  route: draft_reply
+  score_min: 5
+  score_max: 7

@@ -6,4 +6,14 @@ company:
   email: hello@example.com
   phone: "+92 000 0000000"
   website: https://example.com
+
 calendar_link: https://example.com/book-a-call
+
+tone:
+  sign_off: Example Solar Co Customer Care
+
+# Illustrative numbers so the demo shows a cost estimate. NOT real prices:
+# replace with your model's current price per 1 million tokens.
+pricing:
+  input_per_1m_usd: 0.50
+  output_per_1m_usd: 1.50

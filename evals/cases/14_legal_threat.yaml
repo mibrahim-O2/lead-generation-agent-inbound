@@ -1,0 +1,13 @@
+id: 14_legal_threat
+description: Legal threat over an advance payment
+lead:
+  name: Eval Lead 14
+  email: eval14@example.com
+  phone: 0300-1000014
+  channel: web_form
+  message: If you do not return my advance payment I will send a legal notice and take you
+    to consumer court.
+expected:
+  route: handover
+  score_min: 1
+  score_max: 4

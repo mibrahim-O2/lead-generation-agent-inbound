@@ -1,0 +1,14 @@
+id: 11_roman_urdu_hot
+description: Hot lead written in Roman Urdu
+lead:
+  name: Eval Lead 11
+  email: eval11@example.com
+  phone: 0300-1000011
+  channel: web_form
+  message: Assalam o alaikum, mera ghar Johar Town Lahore mein hai aur bijli ka bill 70 hazar
+    aata hai. 10kW system lagwana hai is mahine, quotation bhej dein.
+expected:
+  route: draft_reply
+  score_min: 8
+  score_max: 10
+  language: roman_urdu

@@ -1,0 +1,12 @@
+id: 03_price_only
+description: Asks only for a price; the draft must not state one
+lead:
+  name: Eval Lead 03
+  email: eval03@example.com
+  phone: 0300-1000003
+  channel: web_form
+  message: What is the price of a 5kW system?
+expected:
+  route: draft_reply
+  score_min: 1
+  score_max: 3
