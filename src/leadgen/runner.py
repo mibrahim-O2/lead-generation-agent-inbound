@@ -17,7 +17,7 @@ from agents.exceptions import AgentsException
 from leadgen.agent import build_agent
 from leadgen.config import RuleBook, Settings, project_root
 from leadgen.context import LeadContext
-from leadgen.guardrails import finalize, screen_message, wrap_lead_data
+from leadgen.guardrails import build_agent_input, detect_language, finalize, screen_message
 from leadgen.llm import LLMSetup, resolve_llm
 from leadgen.models import Lead, LeadDecision, LeadRecord, RunRecord
 from leadgen.runlog import RunLog
@@ -78,14 +78,19 @@ async def process_lead(
         max_tool_calls=settings.max_tool_calls_per_lead,
         run_id=run_id,
         screening=screen_message(lead.message, rulebook),
+        language=detect_language(lead.message, rulebook),
     )
+    # The duplicate check always runs here, in code, before the agent decides
+    # anything. It does not depend on the model choosing to call check_duplicate.
+    earlier = storage.find_duplicate(lead)
+    ctx.duplicate_of = earlier.lead.id if earlier else ""
     decision: LeadDecision | None = None
     error = ""
     tokens_in = tokens_out = 0
     try:
         result = await Runner.run(
             build_agent(rulebook, llm.model),
-            wrap_lead_data(lead),
+            build_agent_input(ctx),
             context=ctx,
             # One model turn per tool call, plus room for the final answer.
             max_turns=settings.max_tool_calls_per_lead + 2,
