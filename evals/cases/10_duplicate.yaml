@@ -1,0 +1,20 @@
+id: 10_duplicate
+description: Second enquiry from the same email address
+lead:
+  name: Eval Lead 10
+  email: eval10@example.com
+  phone: 0300-1000010
+  channel: web_form
+  message: Hello again, following up on my solar enquiry for my shop in Gulberg.
+expected:
+  route: handover
+  score_min: 1
+  score_max: 5
+  flags:
+  - duplicate
+seed_leads:
+- name: Eval Lead 10
+  email: eval10@example.com
+  phone: 0300-1000010
+  channel: web_form
+  message: I want solar for my shop in Gulberg Lahore.

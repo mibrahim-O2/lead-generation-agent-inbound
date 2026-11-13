@@ -1,0 +1,13 @@
+id: 05_farm
+description: Farm lead in a nearby town
+lead:
+  name: Eval Lead 05
+  email: eval05@example.com
+  phone: 0300-1000005
+  channel: web_form
+  message: I have a dairy farm near Kasur and want to run two tube wells on solar. The bill
+    is about 80,000. Please send a quotation, we want it next month.
+expected:
+  route: draft_reply
+  score_min: 6
+  score_max: 8

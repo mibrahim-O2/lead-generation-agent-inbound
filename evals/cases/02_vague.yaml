@@ -1,0 +1,17 @@
+id: 02_vague
+description: Vague first contact with no details
+lead:
+  name: Eval Lead 02
+  email: eval02@example.com
+  phone: 0300-1000002
+  channel: web_form
+  message: Hi, I want some information about solar.
+expected:
+  route: draft_reply
+  score_min: 1
+  score_max: 2
+  missing_info:
+  - property_type
+  - monthly_bill_pkr
+  - location
+  - timeline

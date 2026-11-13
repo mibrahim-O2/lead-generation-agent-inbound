@@ -1,0 +1,13 @@
+id: 01_hot_home
+description: Clear hot residential lead with every key detail
+lead:
+  name: Eval Lead 01
+  email: eval01@example.com
+  phone: 0300-1000001
+  channel: web_form
+  message: We have a 1 kanal house in DHA Lahore, monthly bill around 60,000. Need a quote
+    for a 10kW hybrid system this month.
+expected:
+  route: draft_reply
+  score_min: 8
+  score_max: 10

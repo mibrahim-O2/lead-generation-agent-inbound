@@ -1,0 +1,13 @@
+id: 07_spam
+description: Unrelated marketing spam
+lead:
+  name: Eval Lead 07
+  email: eval07@example.com
+  phone: ''
+  channel: web_form
+  message: Boost your website with our SEO and backlink packages. Click here http://spam.example.net
+    for a special offer.
+expected:
+  route: spam
+  score_min: 1
+  score_max: 1

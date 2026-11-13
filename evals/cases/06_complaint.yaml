@@ -1,0 +1,13 @@
+id: 06_complaint
+description: Existing customer complaint asking for a refund
+lead:
+  name: Eval Lead 06
+  email: eval06@example.com
+  phone: 0300-1000006
+  channel: web_form
+  message: Your team installed my system two months ago and the inverter is still faulty.
+    Nobody answers my calls. I want a refund.
+expected:
+  route: handover
+  score_min: 1
+  score_max: 4

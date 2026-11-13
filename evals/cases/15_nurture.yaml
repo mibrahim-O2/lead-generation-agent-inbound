@@ -1,0 +1,13 @@
+id: 15_nurture
+description: Not ready yet, exploring for next year
+lead:
+  name: Eval Lead 15
+  email: eval15@example.com
+  phone: 0300-1000015
+  channel: web_form
+  message: Just exploring options. Maybe next year we will think about solar for our home
+    in Lahore.
+expected:
+  route: nurture
+  score_min: 3
+  score_max: 5

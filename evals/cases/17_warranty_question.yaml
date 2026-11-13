@@ -1,0 +1,12 @@
+id: 17_warranty_question
+description: Product question answered from the FAQ
+lead:
+  name: Eval Lead 17
+  email: eval17@example.com
+  phone: 0300-1000017
+  channel: web_form
+  message: What warranty do you give on panels and inverters?
+expected:
+  route: draft_reply
+  score_min: 1
+  score_max: 2

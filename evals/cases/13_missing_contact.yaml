@@ -1,0 +1,14 @@
+id: 13_missing_contact
+description: Good lead with no email or phone
+lead:
+  name: Eval Lead 13
+  email: ''
+  phone: ''
+  channel: webhook
+  message: We need solar for our school in Model Town, Lahore. The bill is around 2 lakh monthly.
+expected:
+  route: draft_reply
+  score_min: 6
+  score_max: 8
+  missing_info:
+  - contact

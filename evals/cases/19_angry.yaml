@@ -1,0 +1,12 @@
+id: 19_angry
+description: Angry, abusive message
+lead:
+  name: Eval Lead 19
+  email: eval19@example.com
+  phone: 0300-1000019
+  channel: web_form
+  message: You people are the worst company, total fraud. Stop calling me.
+expected:
+  route: handover
+  score_min: 1
+  score_max: 4

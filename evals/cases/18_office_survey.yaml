@@ -1,0 +1,13 @@
+id: 18_office_survey
+description: Business lead asking for a site survey
+lead:
+  name: Eval Lead 18
+  email: eval18@example.com
+  phone: 0300-1000018
+  channel: web_form
+  message: We have an office in Gulberg, Lahore. Monthly bill 120,000. Planning to install
+    solar next month. Can you do a site survey?
+expected:
+  route: draft_reply
+  score_min: 8
+  score_max: 10

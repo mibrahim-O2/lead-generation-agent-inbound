@@ -1,0 +1,13 @@
+id: 12_roman_urdu_price
+description: Price-only question in Roman Urdu
+lead:
+  name: Eval Lead 12
+  email: eval12@example.com
+  phone: 0300-1000012
+  channel: web_form
+  message: solar ka kya rate hai?
+expected:
+  route: draft_reply
+  score_min: 1
+  score_max: 2
+  language: roman_urdu
