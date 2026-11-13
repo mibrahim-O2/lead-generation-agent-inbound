@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from agents import Runner
-from agents.exceptions import AgentsException
+from agents.exceptions import AgentsException, MaxTurnsExceeded
 
 from leadgen.agent import build_agent
 from leadgen.config import RuleBook, Settings, project_root
@@ -98,6 +98,13 @@ async def process_lead(
         decision = result.final_output_as(LeadDecision)
         usage = result.context_wrapper.usage
         tokens_in, tokens_out = usage.input_tokens, usage.output_tokens
+    except MaxTurnsExceeded as exc:
+        # The model kept going after its work was done or never finished. If a draft
+        # was already approved and saved, the lead is complete: keep it. Otherwise
+        # it is a failed run and goes to a human.
+        ctx.limit_hit = True
+        if not (ctx.draft and ctx.proposal):
+            error = f"{type(exc).__name__}: {exc}"
     except AgentsException as exc:
         error = f"{type(exc).__name__}: {exc}"
     except Exception as exc:  # noqa: BLE001 - one bad lead must not stop the run
