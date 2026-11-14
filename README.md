@@ -36,7 +36,7 @@ A new enquiry arrives (web form, webhook, or a row from `data/sample_leads.csv`)
 | Agent tuning and live-eval diagnostics | `fix/agent-tuning`, `fix/live-eval-diagnostics` | done |
 | Google Sheets live demo (optional) | `feat/google-sheets-demo` | done |
 | 3. Provider switch (`llm.py`, `MODEL_SWITCH.md`) | `feat/model-switch` | done |
-| 4. Dashboard (React + Vite, GitHub Pages) | `feat/dashboard` | planned |
+| 4. Dashboard (React + Vite, GitHub Pages) | `feat/dashboard` | done |
 | 5. User guide and deploy docs | `docs/user-guide` | planned |
 
 The agent, its tools, the guardrails, the local API and the evals work today,
@@ -153,8 +153,30 @@ make serve
 | `GET /leads` | Processed leads and the pending queue. |
 | `GET /runs` | Run history. |
 | `POST /run` | Process leads now: `{"source": "webhook" or "sample", "dry_run": false, "limit": 5}`. |
+| `POST /leads/{id}/review` | Record a human decision: `{"action": "approve"}`, `"reject"` or `"handover"`. Changes the status only; sends nothing. |
 
 The API has no login. Keep it on `127.0.0.1`.
+
+## Dashboard
+
+A static React page shows the leads table (score, route, status), each lead's
+drafted reply, run history, today's counts and the average score.
+
+```bash
+make dashboard-install
+```
+
+```bash
+make dashboard-demo
+```
+
+That opens demo mode at http://localhost:5173 with bundled dummy data. For local
+mode, which reads your own runs and has working Approve, Reject and Hand over
+buttons, run `make serve` in one terminal and `make dashboard-dev` in another.
+The buttons record a decision; they never send anything.
+
+The demo version is published to GitHub Pages by a workflow. Details are in
+[dashboard/README.md](dashboard/README.md).
 
 ## How the rules are enforced
 
@@ -212,7 +234,7 @@ presets/solar.yaml  niche rule book
 config/client.yaml  client values (fictional)
 data/               sample leads and FAQ (dummy); runtime files are git-ignored
 evals/cases/        20 evaluation cases
-dashboard/          React dashboard
+dashboard/          React + TypeScript dashboard (demo and local modes)
 tests/              test suite
 ```
 
