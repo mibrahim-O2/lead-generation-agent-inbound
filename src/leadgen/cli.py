@@ -7,18 +7,30 @@ import asyncio
 import logging
 import sys
 import textwrap
-from collections.abc import Sequence
+import time
+from collections.abc import Callable, Sequence
+from dataclasses import replace
 
 from dotenv import load_dotenv
 
-from leadgen.config import ConfigError, Settings, load_rulebook
+from leadgen.config import ConfigError, RuleBook, Settings, load_rulebook
 from leadgen.llm import LLMConfigError
-from leadgen.models import LeadRecord
+from leadgen.models import Lead, LeadRecord
 from leadgen.runlog import format_summary
 from leadgen.runner import RunOutcome, SourceError, load_leads, run_leads
-from leadgen.storage import LocalStorage
+from leadgen.sheets import InboxSheet, SheetsError, open_inbox, open_storage, sheets_active
+from leadgen.storage import Storage
 
-SOURCES = ("sample", "file", "webhook")
+SOURCES = ("sample", "file", "webhook", "sheet")
+# Rough average for one lead on a real model, measured on a live eval run.
+ESTIMATED_TOKENS_PER_LEAD = 12_500
+
+
+def non_negative_float(value: str) -> float:
+    number = float(value)
+    if number < 0:
+        raise argparse.ArgumentTypeError("must be 0 or more")
+    return number
 
 
 def positive_int(value: str) -> int:
@@ -37,7 +49,8 @@ def build_parser() -> argparse.ArgumentParser:
         "--source",
         choices=SOURCES,
         default="sample",
-        help="sample = data/sample_leads.csv, file = --file, webhook = leads queued via the API.",
+        help="sample = data/sample_leads.csv, file = --file, webhook = leads queued via the "
+        "API, sheet = new rows in the Google Sheet's Inbox tab.",
     )
     parser.add_argument("--file", help="Path to a CSV or JSON file (required with --source file).")
     parser.add_argument("--limit", type=positive_int, default=None, help="Process at most N leads.")
@@ -47,6 +60,29 @@ def build_parser() -> argparse.ArgumentParser:
         help="Run the full agent but write nothing; print what it would do.",
     )
     parser.add_argument("--verbose", action="store_true", help="Show per-lead log lines.")
+    parser.add_argument(
+        "--watch",
+        action="store_true",
+        help="With --source sheet: keep checking the Inbox tab for new rows until Ctrl+C.",
+    )
+    parser.add_argument(
+        "--interval",
+        type=positive_int,
+        default=10,
+        help="With --watch: seconds between checks (default 10).",
+    )
+    parser.add_argument(
+        "--delay",
+        type=non_negative_float,
+        default=0.0,
+        help="Pause this many seconds between leads (for live demos).",
+    )
+    parser.add_argument(
+        "--demo",
+        action="store_true",
+        help="Demo helper: print the estimated cost first, and use the mock model when "
+        "no API key is set.",
+    )
     return parser
 
 
@@ -57,6 +93,8 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         parser.error("--file is required when --source file is used")
     if args.file and args.source != "file":
         parser.error("--file can only be used with --source file")
+    if args.watch and args.source != "sheet":
+        parser.error("--watch can only be used with --source sheet")
     return args
 
 
@@ -88,15 +126,143 @@ def format_record(record: LeadRecord) -> str:
     return "\n".join(lines)
 
 
-def print_outcome(outcome: RunOutcome, data_dir: str) -> None:
-    for record in outcome.records:
-        print(format_record(record))
-        print()
+def print_summary(outcome: RunOutcome, data_dir: str) -> None:
     print(format_summary(outcome.run))
+    for error in outcome.run.errors:
+        print(f"  ! {error}")
     if outcome.run.dry_run:
         print("DRY RUN: nothing was written and nothing was sent.")
     else:
         print(f"Saved to {data_dir}. Nothing was sent: drafts wait for human approval.")
+
+
+def print_record(record: LeadRecord) -> None:
+    print(format_record(record))
+    print(flush=True)
+
+
+def demo_settings(settings: Settings) -> Settings:
+    """--demo: fall back to the mock model when there is no usable API key."""
+    has_key = bool(settings.openai_api_key) and settings.openai_api_key != "sk-REPLACE-ME"
+    if settings.mock_llm or (settings.llm_provider == "openai" and not has_key):
+        return replace(settings, mock_llm=True)
+    return settings
+
+
+def cost_estimate(lead_count: int, settings: Settings, rulebook: RuleBook) -> str:
+    """One line shown before a demo run starts."""
+    if settings.mock_llm:
+        return f"Model: mock (no API key needed). Estimated cost for {lead_count} lead(s): $0."
+    tokens = lead_count * ESTIMATED_TOKENS_PER_LEAD
+    model = f"{settings.llm_provider}/{settings.llm_model or 'sdk-default'}"
+    price = rulebook.pricing.input_per_1m_usd  # nearly all tokens are input tokens
+    if price:
+        cost = f"about ${tokens * price / 1_000_000:.3f} at the prices in config/client.yaml"
+    else:
+        cost = "cost unknown: set pricing in config/client.yaml"
+    return (
+        f"Model: {model} (REAL API calls). Estimated use for {lead_count} lead(s): "
+        f"about {tokens:,} tokens, {cost}."
+    )
+
+
+def watch_inbox(
+    inbox: InboxSheet,
+    *,
+    args: argparse.Namespace,
+    settings: Settings,
+    rulebook: RuleBook,
+    storage: Storage,
+    sleep: Callable[[float], None] = time.sleep,
+) -> int:
+    """Poll the Inbox tab and process new rows until Ctrl+C or a cap is reached.
+
+    The whole watch session shares one budget: MAX_LEADS_PER_RUN leads and
+    MAX_TOKENS_PER_RUN tokens in total.
+    """
+    data_dir = str(settings.resolved_data_dir())
+    leads_done = tokens_used = failures = 0
+    seen: set[str] = set()  # a dry run cannot mark rows, so remember them here
+    had_errors = False
+    print(f"Watching the Inbox tab every {args.interval}s. Press Ctrl+C to stop.", flush=True)
+    try:
+        while True:
+            if leads_done >= settings.max_leads_per_run:
+                print(f"Lead limit reached ({settings.max_leads_per_run}). Stopping.")
+                break
+            if tokens_used >= settings.max_tokens_per_run:
+                print(f"Token limit reached ({settings.max_tokens_per_run}). Stopping.")
+                break
+            try:
+                leads = [lead for lead in inbox.pending() if lead.id not in seen]
+                failures = 0
+            except SheetsError as exc:
+                failures += 1
+                print(f"Error: {exc}", file=sys.stderr)
+                if failures >= 3:
+                    print("Giving up after 3 failed attempts to read the sheet.", file=sys.stderr)
+                    return 2
+                leads = []
+            if leads:
+                outcome = run_batch(
+                    leads,
+                    inbox,
+                    args=args,
+                    settings=replace(
+                        settings, max_tokens_per_run=settings.max_tokens_per_run - tokens_used
+                    ),
+                    rulebook=rulebook,
+                    storage=storage,
+                    limit=settings.max_leads_per_run - leads_done,
+                )
+                seen.update(record.lead.id for record in outcome.records)
+                leads_done += outcome.run.leads_processed
+                tokens_used += outcome.run.total_tokens
+                had_errors = had_errors or bool(outcome.run.errors)
+                print_summary(outcome, data_dir)
+            sleep(args.interval)
+    except KeyboardInterrupt:
+        print("\nStopped by Ctrl+C.")
+    print(f"Watch finished: {leads_done} lead(s) processed, {tokens_used} tokens used.")
+    return 1 if had_errors else 0
+
+
+def run_batch(
+    leads: list[Lead],
+    inbox: InboxSheet | None,
+    *,
+    args: argparse.Namespace,
+    settings: Settings,
+    rulebook: RuleBook,
+    storage: Storage,
+    limit: int | None,
+) -> RunOutcome:
+    """Run one batch, printing each lead as it finishes and marking its inbox row."""
+    mark_failures: list[str] = []
+
+    def lead_done(record: LeadRecord) -> None:
+        print_record(record)
+        if inbox is not None and not args.dry_run:  # a dry run never writes to the sheet
+            try:
+                inbox.mark_processed(record)
+            except SheetsError as exc:
+                mark_failures.append(f"Google Sheets: could not mark {record.lead.id}. {exc}")
+
+    outcome = asyncio.run(
+        run_leads(
+            leads,
+            settings=settings,
+            rulebook=rulebook,
+            storage=storage,
+            source=args.source,
+            dry_run=args.dry_run,
+            limit=limit,
+            on_lead_done=lead_done,
+            delay=args.delay,
+        )
+    )
+    outcome.run.errors.extend(mark_failures)
+    return outcome
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -108,25 +274,37 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     try:
         settings = Settings.from_env()
+        if args.demo:
+            settings = demo_settings(settings)
         rulebook = load_rulebook(settings.preset, settings.client_config)
-        storage = LocalStorage(settings.resolved_data_dir())
-        leads = load_leads(args.source, storage, args.file)
+        storage = open_storage(settings)
+        inbox = open_inbox(settings) if args.source == "sheet" else None
+        if sheets_active(settings) and not args.dry_run:
+            print(f'Google Sheets: results also go to the "{settings.sheet_leads_tab}" tab.')
+        if args.watch and inbox is not None:
+            return watch_inbox(
+                inbox, args=args, settings=settings, rulebook=rulebook, storage=storage
+            )
+        leads = (
+            inbox.pending() if inbox is not None else load_leads(args.source, storage, args.file)
+        )
         if not leads:
             print(f"No new leads from source '{args.source}'.")
             return 0
-        outcome = asyncio.run(
-            run_leads(
-                leads,
-                settings=settings,
-                rulebook=rulebook,
-                storage=storage,
-                source=args.source,
-                dry_run=args.dry_run,
-                limit=args.limit,
-            )
+        if args.demo:
+            count = min(len(leads), args.limit or len(leads), settings.max_leads_per_run)
+            print(cost_estimate(count, settings, rulebook), flush=True)
+        outcome = run_batch(
+            leads,
+            inbox,
+            args=args,
+            settings=settings,
+            rulebook=rulebook,
+            storage=storage,
+            limit=args.limit,
         )
-    except (ConfigError, LLMConfigError, SourceError) as exc:
+    except (ConfigError, LLMConfigError, SourceError, SheetsError) as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 2
-    print_outcome(outcome, str(settings.resolved_data_dir()))
+    print_summary(outcome, str(settings.resolved_data_dir()))
     return 1 if outcome.run.errors else 0
