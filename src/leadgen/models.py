@@ -25,7 +25,10 @@ Language = Literal["english", "roman_urdu", "urdu"]
 DraftKind = Literal["reply", "nurture"]
 HandoverCategory = Literal["complaint", "legal_threat", "angry", "duplicate", "other"]
 # A draft is never sent by this system: "pending_approval" waits for a human.
-Status = Literal["pending_approval", "needs_human", "nurture", "discarded"]
+# "approved" and "rejected" are set only by a human reviewing a draft (dashboard or
+# sheet). Approving records the decision; it sends nothing.
+Status = Literal["pending_approval", "needs_human", "nurture", "discarded", "approved", "rejected"]
+ReviewAction = Literal["approve", "reject", "handover"]
 
 
 def now_iso() -> str:
@@ -123,6 +126,7 @@ class LeadRecord(BaseModel):
     tool_calls: list[str] = Field(default_factory=list)
     run_id: str = ""
     processed_at: str = Field(default_factory=now_iso)
+    reviewed_at: str = ""  # when a human approved, rejected or took over the lead
     error: str = ""
 
 
