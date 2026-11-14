@@ -25,6 +25,11 @@ dev = [
     "httpx>=0.27",
 ]
 
+# Optional: live Google Sheet demo (docs/GOOGLE_SHEETS.md). Not needed by default.
+sheets = [
+    "gspread>=6.1,<7",
+]
+
 [project.scripts]
 leadgen = "leadgen.cli:main"
 
