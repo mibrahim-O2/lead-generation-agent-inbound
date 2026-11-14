@@ -178,7 +178,8 @@ def test_duplicate_and_failed_run_go_to_a_human(rulebook, lead) -> None:
 def test_clean_lead_keeps_the_agents_route_and_waits_for_approval(rulebook, lead) -> None:
     record = finalize(make_ctx(rulebook, lead, draft="Hi."), LeadDecision(**decision()))
     assert (record.route, record.status) == ("draft_reply", "pending_approval")
-    nurture = finalize(
-        make_ctx(rulebook, lead, draft="Hi."), LeadDecision(**decision(route="nurture"))
-    )
+    later = ExtractedFields(property_type="home", location="Lahore", timeline="later")
+    ctx = make_ctx(rulebook, lead, draft="Hi.", extracted=later)
+    ctx.score = score_fields(later, rulebook)
+    nurture = finalize(ctx, LeadDecision(**decision(route="nurture")))
     assert (nurture.route, nurture.status, nurture.draft_reply) == ("nurture", "nurture", "Hi.")

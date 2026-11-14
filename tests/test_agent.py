@@ -26,7 +26,7 @@ def run(lead: Lead, rulebook, llm, settings=None, storage=None):
 
 
 def draft(body: str) -> tuple:
-    return ("tool", "draft_reply", {"body": body, "language": "english", "kind": "reply"})
+    return ("tool", "draft_reply", {"body": body, "language": "english"})
 
 
 def test_agent_definition(rulebook) -> None:
@@ -113,7 +113,7 @@ def test_model_cannot_skip_scoring_or_fake_a_score(rulebook) -> None:
             (
                 "tool",
                 "draft_reply",
-                {"body": "Thanks for reaching out.", "language": "english", "kind": "reply"},
+                {"body": "Thanks for reaching out.", "language": "english"},
             ),
             ("final", decision(score=10, extracted=fields)),
         ]

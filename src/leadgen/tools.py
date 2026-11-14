@@ -16,9 +16,9 @@ from agents import RunContextWrapper, function_tool
 
 from leadgen.config import project_root
 from leadgen.context import LeadContext
-from leadgen.guardrails import check_draft, check_draft_style, finalize, max_questions
+from leadgen.guardrails import draft_kind, finalize, max_questions, reject_draft, review_draft
 from leadgen.models import (
-    DraftKind,
+    DraftProblem,
     ExtractedFields,
     HandoverCategory,
     Intent,
@@ -190,54 +190,67 @@ def score_lead(
     ctx.extracted, ctx.hints_applied = apply_hints(given, ctx.lead.message, ctx.rulebook)
     ctx.score = score_fields(ctx.extracted, ctx.rulebook)
     missing = missing_fields(ctx.extracted, ctx.lead, ctx.rulebook)
-    return _json(
-        {
-            **ctx.score.model_dump(),
-            "hot_threshold": ctx.rulebook.scoring.hot_threshold,
-            "missing_fields": missing,
-            "questions_to_ask": questions_for(missing, ctx.language, ctx.rulebook),
-            "max_questions": {
-                "reply": max_questions("reply", ctx.rulebook),
-                "nurture": max_questions("nurture", ctx.rulebook),
-            },
-            "reply_language": ctx.language,
-        }
-    )
+    kind = draft_kind(ctx)
+    limit = max_questions(kind, ctx.rulebook)
+    result = {
+        **ctx.score.model_dump(),
+        "hot_threshold": ctx.rulebook.scoring.hot_threshold,
+        "missing_fields": missing,
+        "draft_kind": kind,
+        "max_questions": limit,
+        "questions_to_ask": questions_for(missing, ctx.language, ctx.rulebook)[:limit],
+        "reply_language": ctx.language,
+    }
+    if kind == "nurture":
+        result["note"] = (
+            "Not ready yet: this is a nurture lead. Write a short note of two or three "
+            f"sentences with at most {limit} question, and save it with route nurture."
+        )
+    return _json(result)
 
 
 @function_tool
-def draft_reply(wrapper: Ctx, body: str, language: Language, kind: DraftKind) -> str:
+def draft_reply(wrapper: Ctx, body: str, language: Language) -> str:
     """Store a DRAFT reply for human approval. Nothing is sent to the customer.
 
-    The draft is rejected if it contains a forbidden claim, is in the wrong
+    A draft is rejected if it contains a forbidden claim, is in the wrong
     language, asks too many questions, or asks for contact details that are
-    already on file. Fix the problems listed and call again.
+    already on file. The result lists each problem with the exact change to
+    make: change only those things, keep the rest, and call again.
 
     Args:
         body: The full reply text.
         language: The language the body is written in. Must match reply_language.
-        kind: "reply" for a normal reply, "nurture" for a short keep-in-touch note.
     """
     ctx = wrapper.context
     if error := _over_budget(ctx, "draft_reply"):
         return error
     body = body.strip()
+    kind = draft_kind(ctx)  # reply or nurture, decided from the facts
     if not body:
-        return _json({"accepted": False, "problems": ["empty draft"]})
-    descriptions = {rule.id: rule.description for rule in ctx.rulebook.forbidden_claims}
-    problems = [f"{p}: {descriptions.get(p, '')}" for p in check_draft(body, ctx.rulebook)]
-    problems += check_draft_style(body, language, kind, ctx)
+        problems = [DraftProblem(check="empty", fix="Write the reply text in body.")]
+    else:
+        problems = review_draft(body, language, kind, ctx)
     if problems:
-        ctx.rejected_drafts.append(body)
+        rejected = reject_draft(ctx, body, problems)
         return _json(
             {
                 "accepted": False,
-                "problems": problems,
-                "hint": "Fix these problems and call draft_reply again.",
+                "attempt": rejected.attempt,
+                "draft_kind": kind,
+                "problems": [problem.model_dump() for problem in problems],
+                "what_to_do": "Make exactly the changes listed under 'fix', keep everything "
+                "else, and call draft_reply again. Do not hand over because of a rejection.",
             }
         )
     ctx.draft, ctx.draft_language, ctx.draft_kind = body, language, kind
-    return _json({"accepted": True, "status": "draft stored for human approval; not sent"})
+    return _json(
+        {
+            "accepted": True,
+            "draft_kind": kind,
+            "status": "draft stored for human approval; not sent",
+        }
+    )
 
 
 @function_tool

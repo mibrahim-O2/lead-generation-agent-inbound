@@ -2,16 +2,19 @@
 
     python -m leadgen.evals          # mock model: offline, no key (`make evals`)
     python -m leadgen.evals --live   # real model from .env, capped (`make evals-live`)
+    python -m leadgen.evals --live --case 01_hot_home   # one case (`make evals-live-case`)
 
 With the mock model the evals check the pipeline, tools and guardrails. The live
 mode checks a real model's judgement; it makes real API calls and costs tokens,
-so it has hard caps on leads and tokens and refuses to run in CI.
+so it has hard caps on leads and tokens and refuses to run in CI. A live run
+also writes a per-case JSON report (see REPORT_NAME) to the data directory.
 """
 
 from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 import os
 import sys
 from collections.abc import Sequence
@@ -25,7 +28,7 @@ from dotenv import load_dotenv
 from leadgen.config import ConfigError, RuleBook, Settings, load_rulebook, project_root
 from leadgen.guardrails import asks_for_contact, check_draft, count_questions, max_questions
 from leadgen.llm import LLMConfigError, LLMSetup, resolve_llm
-from leadgen.models import Lead, LeadRecord
+from leadgen.models import Lead, LeadRecord, now_iso
 from leadgen.runner import process_lead
 from leadgen.storage import MemoryStorage
 
@@ -34,6 +37,7 @@ LIVE_DEFAULT_MAX_LEADS = 30
 LIVE_DEFAULT_MAX_TOKENS = 400_000
 LIVE_HARD_MAX_LEADS = 40
 LIVE_HARD_MAX_TOKENS = 600_000
+REPORT_NAME = "live-eval-report.json"  # written under LEADGEN_DATA_DIR (git-ignored)
 
 
 @dataclass
@@ -175,11 +179,21 @@ async def run_all(
     max_leads: int | None = None,
     max_tokens: int | None = None,
     name_filter: str = "",
+    case_id: str = "",
 ) -> EvalReport:
-    """Run the cases in order, stopping before a cap would be exceeded."""
+    """Run the cases in order, stopping before a cap would be exceeded.
+
+    `name_filter` keeps cases whose id contains the text; `case_id` keeps the one
+    case with exactly that id.
+    """
     rulebook = load_rulebook(settings.preset, settings.client_config)
     llm = resolve_llm(settings)
     cases = [case for case in load_cases() if name_filter in case.id]
+    if case_id:
+        cases = [case for case in cases if case.id == case_id]
+        if not cases:
+            known = ", ".join(case.id for case in load_cases())
+            raise ConfigError(f"No eval case with id '{case_id}'. Known ids: {known}")
     report = EvalReport(results=[])
     leads_used = 0
     for index, case in enumerate(cases):
@@ -195,8 +209,23 @@ async def run_all(
     return report
 
 
+def explain(record: LeadRecord) -> list[str]:
+    """Why a lead ended where it did: handover reason and every rejected draft."""
+    lines = []
+    if record.route == "handover":
+        lines.append(f"handover reason: {record.handover_reason or 'not recorded'}")
+    for rejected in record.rejected_drafts:
+        lines.append(f"rejected draft #{rejected.attempt}:")
+        for problem in rejected.problems:
+            found = f" (found: {problem.found})" if problem.found else ""
+            lines.append(f"  - {problem.check}{found} -> {problem.fix}")
+    if record.error:
+        lines.append(f"error: {record.error}")
+    return lines
+
+
 def format_report(report: EvalReport, label: str) -> str:
-    """A summary table, one row per case."""
+    """A summary table, one row per case, with the reason under every handover."""
     header = f"{'':4}  {'case':<28} {'route':<12} {'score':<10} {'lang':<10} {'Qs':<3} tokens"
     lines = [f"Evals on {label}", header, "-" * len(header)]
     for result in report.results:
@@ -208,6 +237,7 @@ def format_report(report: EvalReport, label: str) -> str:
             f"{count_questions(record.draft_reply):<3} {result.tokens}"
         )
         lines.extend(f"        - {failure}" for failure in result.failures)
+        lines.extend(f"        > {line}" for line in explain(record))
     lines.append("-" * len(header))
     lines.append(
         f"{report.passed}/{len(report.results)} cases passed   total tokens: {report.tokens}"
@@ -218,6 +248,49 @@ def format_report(report: EvalReport, label: str) -> str:
             f"Not run ({len(report.skipped)}): {', '.join(report.skipped)}"
         )
     return "\n".join(lines)
+
+
+def report_data(report: EvalReport, label: str) -> dict[str, Any]:
+    """The per-case report as plain data, for the JSON file."""
+    return {
+        "generated_at": now_iso(),
+        "model": label,
+        "passed": report.passed,
+        "total": len(report.results),
+        "tokens": report.tokens,
+        "stopped_reason": report.stopped_reason,
+        "skipped": report.skipped,
+        "cases": [
+            {
+                "case_id": result.case.id,
+                "passed": result.passed,
+                "failures": result.failures,
+                "expected": result.case.expected,
+                "route": result.record.route,
+                "score": result.record.score,
+                "intent": result.record.intent,
+                "handover_reason": result.record.handover_reason,
+                "rejected_drafts": [r.model_dump() for r in result.record.rejected_drafts],
+                "final_draft": result.record.draft_reply,
+                "draft_language": result.record.draft_language,
+                "tools_used": result.record.tool_calls,
+                "flags": result.record.flags,
+                "guardrail_notes": result.record.guardrail_notes,
+                "error": result.record.error,
+                "tokens": result.tokens,
+            }
+            for result in report.results
+        ],
+    }
+
+
+def write_report(report: EvalReport, label: str, data_dir: Path) -> Path:
+    data_dir.mkdir(parents=True, exist_ok=True)
+    path = data_dir / REPORT_NAME
+    path.write_text(
+        json.dumps(report_data(report, label), indent=2, ensure_ascii=False), encoding="utf-8"
+    )
+    return path
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -238,6 +311,7 @@ def build_parser() -> argparse.ArgumentParser:
         help=f"Live mode: stop once this many tokens are used (hard limit {LIVE_HARD_MAX_TOKENS}).",
     )
     parser.add_argument("--filter", default="", help="Only run cases whose id contains this.")
+    parser.add_argument("--case", default="", help="Run only the case with exactly this id.")
     return parser
 
 
@@ -264,11 +338,14 @@ def main(argv: Sequence[str] | None = None) -> int:
             # Without --live this is always the mock, even if .env holds a real key.
             settings = replace(settings, mock_llm=True)
             caps, label = {}, "mock model (pipeline and guardrails only)"
-        report = asyncio.run(run_all(settings, name_filter=args.filter, **caps))
+        report = asyncio.run(run_all(settings, name_filter=args.filter, case_id=args.case, **caps))
     except (ConfigError, LLMConfigError) as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 2
     print(format_report(report, label))
+    if args.live:
+        path = write_report(report, label, settings.resolved_data_dir())
+        print(f"Per-case report written to {path}")
     return 0 if report.ok else 1
 
 
