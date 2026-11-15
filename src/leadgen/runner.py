@@ -6,8 +6,10 @@ so nothing is written to disk. Nothing is ever sent in either mode.
 
 from __future__ import annotations
 
+import asyncio
 import csv
 import json
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -127,8 +129,14 @@ async def run_leads(
     dry_run: bool = False,
     limit: int | None = None,
     llm: LLMSetup | None = None,
+    on_lead_done: Callable[[LeadRecord], None] | None = None,
+    delay: float = 0.0,
 ) -> RunOutcome:
-    """Process a batch of leads under the run limits and log the run."""
+    """Process a batch of leads under the run limits and log the run.
+
+    `on_lead_done` is called as each lead finishes (used to print progress and to
+    mark sheet rows). `delay` pauses that many seconds between leads, for demos.
+    """
     llm = llm or resolve_llm(settings)
     # Dry run: work on an in-memory copy, so the real storage is never written.
     work_storage: Storage = MemoryStorage(seed=storage) if dry_run else storage
@@ -141,10 +149,12 @@ async def run_leads(
         stopped = f"Lead limit reached ({cap}); {len(leads) - cap} lead(s) left for the next run"
 
     records: list[LeadRecord] = []
-    for lead in leads[:cap]:
+    for index, lead in enumerate(leads[:cap]):
         if log.run.total_tokens >= settings.max_tokens_per_run:
             stopped = f"Token limit reached ({settings.max_tokens_per_run})"
             break
+        if index and delay > 0:
+            await asyncio.sleep(delay)
         record, tokens_in, tokens_out = await process_lead(
             lead.with_defaults(),
             rulebook=rulebook,
@@ -156,6 +166,13 @@ async def run_leads(
         log.add_usage(tokens_in, tokens_out)
         log.add_lead(record)
         records.append(record)
+        # The lead is saved. Now let the storage mirror it (e.g. to a Google Sheet).
+        # In a dry run work_storage is the in-memory copy, so nothing is mirrored.
+        problem = work_storage.on_lead_finished(record)
+        if problem:
+            log.add_error(problem)
+        if on_lead_done:
+            on_lead_done(record)
 
     run = log.finish(rulebook.pricing, stopped_reason=stopped)
     if not dry_run:

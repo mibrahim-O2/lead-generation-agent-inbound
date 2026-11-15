@@ -62,6 +62,15 @@ class Storage(ABC):
 
     # Shared behaviour built on the methods above.
 
+    def on_lead_finished(self, record: LeadRecord) -> str | None:
+        """Called once per lead, after its final record is saved.
+
+        Backends that mirror results elsewhere (for example a Google Sheet) do it
+        here. Returns a message describing a problem, or None. The default does
+        nothing.
+        """
+        return None
+
     def pending_leads(self) -> list[Lead]:
         """Queued enquiries that have not been processed yet."""
         done = {record.lead.id for record in self.list_records()}

@@ -33,6 +33,8 @@ A new enquiry arrives (web form, webhook, or a row from `data/sample_leads.csv`)
 | --- | --- | --- |
 | 1. Scaffold | `feat/scaffold` | done |
 | 2. Core agent, tools, evals, API server | `feat/core-agent` | done |
+| Agent tuning and live-eval diagnostics | `fix/agent-tuning`, `fix/live-eval-diagnostics` | done |
+| Google Sheets live demo (optional) | `feat/google-sheets-demo` | done |
 | 3. Provider switch (`llm.py`, `MODEL_SWITCH.md`) | `feat/model-switch` | planned |
 | 4. Dashboard (React + Vite, GitHub Pages) | `feat/dashboard` | planned |
 | 5. User guide and deploy docs | `docs/user-guide` | planned |
@@ -106,9 +108,31 @@ python -m leadgen --source sample --dry-run
 | `--source sample` | Read `data/sample_leads.csv` (default). |
 | `--source file --file leads.csv` | Read your own CSV or JSON file. |
 | `--source webhook` | Process leads queued through the local API. |
+| `--source sheet` | Process new rows in the Google Sheet's Inbox tab (optional feature). |
+| `--watch --interval 10` | With `--source sheet`: keep checking for new rows until Ctrl+C. |
+| `--delay 3` | Pause between leads, for live demos. |
 
 Without `--dry-run`, leads, drafts and the run log are saved under `data/runtime/`.
 Nothing is ever sent in either mode.
+
+## Google Sheets live demo (optional)
+
+A Google Sheet can fill up row by row while the agent works, which is handy for a
+screen recording. It is off by default and needs an optional install:
+
+```bash
+pip install -e ".[sheets]"
+```
+
+```bash
+make demo-sheet
+```
+
+Setup takes about 15 minutes and is explained step by step in
+[docs/GOOGLE_SHEETS.md](docs/GOOGLE_SHEETS.md). New enquiries can also be typed
+into the sheet's Inbox tab and processed with `--source sheet` (add `--watch` to
+keep polling). A dry run never writes to the sheet, and mock mode never contacts
+Google unless you opt in.
 
 ## Local API
 
@@ -172,6 +196,7 @@ src/leadgen/        Python package
   scoring.py        the scoring rubric, applied in code
   evals.py          eval runner
   storage.py        storage interface (local JSON/CSV by default)
+  sheets.py         optional Google Sheets mirror and Inbox source
   runner.py         run loop, limits, dry run
   runlog.py         run history and cost estimates
   server.py         local FastAPI server for the dashboard

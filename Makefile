@@ -1,4 +1,4 @@
-.PHONY: install test lint evals evals-live evals-live-case demo demo-dry serve
+.PHONY: install test lint evals evals-live evals-live-case demo demo-dry demo-sheet serve
 
 PYTHON ?= python
 
@@ -26,6 +26,10 @@ demo:  ## One-command demo: sample leads end to end on the mock model, saved to 
 
 demo-dry:  ## Same demo as a dry run: prints everything, writes nothing
 	LEADGEN_MOCK_LLM=1 $(PYTHON) -m leadgen --source sample --dry-run
+
+DELAY ?= 3
+demo-sheet:  ## OPTIONAL live demo: sample leads one by one into your Google Sheet (docs/GOOGLE_SHEETS.md). DELAY=seconds between leads.
+	SHEETS_ENABLED=1 SHEETS_ALLOW_MOCK=1 LEADGEN_DATA_DIR=data/runtime/demo $(PYTHON) -m leadgen --source sample --demo --delay $(DELAY)
 
 serve:  ## Start the local API for the dashboard (settings come from .env)
 	$(PYTHON) -m leadgen.server

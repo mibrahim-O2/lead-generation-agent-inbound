@@ -464,6 +464,13 @@ class Settings:
     api_host: str = "127.0.0.1"
     api_port: int = 8000
     cors_origins: tuple[str, ...] = ("http://localhost:5173",)
+    # Optional Google Sheets demo (off by default).
+    sheets_enabled: bool = False
+    sheets_allow_mock: bool = False
+    google_sheet_id: str = ""
+    google_service_account_file: str = "secrets/service-account.json"
+    sheet_leads_tab: str = "Leads"
+    sheet_inbox_tab: str = "Inbox"
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] | None = None) -> Settings:
@@ -485,6 +492,13 @@ class Settings:
             api_host=env.get("API_HOST", "").strip() or "127.0.0.1",
             api_port=_int(env, "API_PORT", 8000),
             cors_origins=origins,
+            sheets_enabled=_flag(env, "SHEETS_ENABLED"),
+            sheets_allow_mock=_flag(env, "SHEETS_ALLOW_MOCK"),
+            google_sheet_id=env.get("GOOGLE_SHEET_ID", "").strip(),
+            google_service_account_file=env.get("GOOGLE_SERVICE_ACCOUNT_FILE", "").strip()
+            or "secrets/service-account.json",
+            sheet_leads_tab=env.get("SHEET_LEADS_TAB", "").strip() or "Leads",
+            sheet_inbox_tab=env.get("SHEET_INBOX_TAB", "").strip() or "Inbox",
         )
 
     def resolved_data_dir(self) -> Path:

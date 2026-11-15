@@ -20,7 +20,8 @@ from leadgen.config import ConfigError, Settings, load_rulebook
 from leadgen.llm import LLMConfigError
 from leadgen.models import Lead
 from leadgen.runner import SourceError, load_leads, run_leads
-from leadgen.storage import LocalStorage, Storage
+from leadgen.sheets import open_storage
+from leadgen.storage import Storage
 
 
 class NewLead(BaseModel):
@@ -39,7 +40,7 @@ class RunRequest(BaseModel):
 
 def create_app(settings: Settings | None = None, storage: Storage | None = None) -> FastAPI:
     settings = settings or Settings.from_env()
-    storage = storage or LocalStorage(settings.resolved_data_dir())
+    storage = storage or open_storage(settings)
     app = FastAPI(title="Lead agent local API", version="0.1.0")
     app.add_middleware(
         CORSMiddleware,

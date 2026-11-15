@@ -44,6 +44,8 @@ def test_every_setting_is_documented_in_example_env() -> None:
         "OPENAI_AGENTS_DISABLE_TRACING", "MAX_LEADS_PER_RUN", "MAX_TOOL_CALLS_PER_LEAD",
         "MAX_TOKENS_PER_RUN", "LEADGEN_PRESET", "LEADGEN_CLIENT_CONFIG", "LEADGEN_DATA_DIR",
         "API_HOST", "API_PORT", "CORS_ORIGINS", "VITE_API_URL",
+        "SHEETS_ENABLED", "GOOGLE_SHEET_ID", "GOOGLE_SERVICE_ACCOUNT_FILE", "SHEET_LEADS_TAB",
+        "SHEET_INBOX_TAB", "SHEETS_ALLOW_MOCK",
     ]:  # fmt: skip
         assert name in documented, f"{name} missing from example.env"
 
