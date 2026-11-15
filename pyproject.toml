@@ -25,6 +25,11 @@ dev = [
     "httpx>=0.27",
 ]
 
+# Optional: non-OpenAI model providers through the SDK's LiteLLM extension
+# (MODEL_SWITCH.md). Not needed for OpenAI or the mock.
+providers = [
+    "openai-agents[litellm]>=0.24,<0.25",
+]
 # Optional: live Google Sheet demo (docs/GOOGLE_SHEETS.md). Not needed by default.
 sheets = [
     "gspread>=6.1,<7",

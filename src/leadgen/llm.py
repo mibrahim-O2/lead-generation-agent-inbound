@@ -1,7 +1,20 @@
 """Provider abstraction - the ONLY module that knows about model providers.
 
 `resolve_llm(settings)` is the single entry point. Selection is env-only:
-LLM_PROVIDER and LLM_MODEL, or LEADGEN_MOCK_LLM=1 for the offline mock.
+LLM_PROVIDER and LLM_MODEL (plus that provider's key), or LEADGEN_MOCK_LLM=1
+for the offline mock. Nothing else in the code base imports a provider class.
+
+How each provider is reached (all verified against the installed openai-agents
+0.24 source):
+
+- openai: the SDK default (Responses API). `Agent(model="<name>")`.
+- anthropic, gemini, mistral, deepseek, groq, openrouter, ollama: through the
+  SDK's LiteLLM extension, `agents.extensions.models.litellm_model.LitellmModel`.
+  Needs the optional extra: pip install -e ".[providers]".
+- openai_compatible: any server that speaks the OpenAI Chat Completions API,
+  through `OpenAIChatCompletionsModel` with a custom base URL. No extra needed.
+
+To add a provider, add one entry to PROVIDERS. See MODEL_SWITCH.md.
 
 The mock is a small rule-based stand-in for a real model. It speaks the Agents
 SDK `Model` interface, so the real agent loop, tools and guardrails all run
@@ -12,8 +25,9 @@ language understanding.
 from __future__ import annotations
 
 import json
+import os
 import re
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Mapping
 from dataclasses import dataclass
 from typing import Any
 
@@ -25,6 +39,9 @@ from openai.types.responses import (
 )
 
 from leadgen.config import Settings
+
+PLACEHOLDERS = ("", "REPLACE-ME", "sk-REPLACE-ME")
+PROVIDERS_EXTRA = 'pip install -e ".[providers]"'
 
 
 class LLMConfigError(Exception):
@@ -39,26 +56,124 @@ class LLMSetup:
     mock: bool = False
 
 
-def resolve_llm(settings: Settings) -> LLMSetup:
-    """Pick the model from the environment settings."""
+@dataclass(frozen=True)
+class ProviderSpec:
+    """How one LLM_PROVIDER value is turned into a model."""
+
+    kind: str  # "openai", "litellm" or "openai_compatible"
+    key_env: str = ""  # environment variable holding the API key ("" = no key needed)
+    litellm_prefix: str = ""  # LiteLLM routes on "<prefix>/<model>"
+    base_url_env: str = ""  # optional environment variable for a custom base URL
+    default_base_url: str = ""
+
+
+# LLM_PROVIDER value -> how to build the model. This table is the only place a
+# provider is defined. Prefixes and key names match LiteLLM's own.
+PROVIDERS: dict[str, ProviderSpec] = {
+    "openai": ProviderSpec(kind="openai", key_env="OPENAI_API_KEY"),
+    "anthropic": ProviderSpec("litellm", "ANTHROPIC_API_KEY", "anthropic"),
+    "gemini": ProviderSpec("litellm", "GEMINI_API_KEY", "gemini"),
+    "mistral": ProviderSpec("litellm", "MISTRAL_API_KEY", "mistral"),
+    "deepseek": ProviderSpec("litellm", "DEEPSEEK_API_KEY", "deepseek"),
+    "groq": ProviderSpec("litellm", "GROQ_API_KEY", "groq"),
+    "openrouter": ProviderSpec("litellm", "OPENROUTER_API_KEY", "openrouter"),
+    # Local Ollama through its chat API. No key; the server must be running.
+    "ollama": ProviderSpec(
+        "litellm",
+        litellm_prefix="ollama_chat",
+        base_url_env="OLLAMA_BASE_URL",
+        default_base_url="http://localhost:11434",
+    ),
+    # Anything that speaks the OpenAI Chat Completions API.
+    "openai_compatible": ProviderSpec(
+        "openai_compatible", key_env="LLM_API_KEY", base_url_env="LLM_BASE_URL"
+    ),
+}
+
+
+def _litellm_model(model: str, api_key: str | None, base_url: str | None) -> Model:
+    """Build the SDK's LiteLLM model. Imported lazily: it is an optional extra."""
+    try:
+        from agents.extensions.models.litellm_model import LitellmModel
+    except ImportError as exc:
+        raise LLMConfigError(
+            "This provider needs the optional LiteLLM extra, which is not installed. "
+            f"Run: {PROVIDERS_EXTRA}"
+        ) from exc
+    return LitellmModel(model=model, api_key=api_key, base_url=base_url)
+
+
+def _openai_compatible_model(model: str, api_key: str, base_url: str) -> Model:
+    """Chat Completions against a custom base URL, using the SDK's own model class."""
+    from agents import OpenAIChatCompletionsModel
+    from openai import AsyncOpenAI
+
+    client = AsyncOpenAI(base_url=base_url, api_key=api_key)
+    return OpenAIChatCompletionsModel(model=model, openai_client=client)
+
+
+def _key(env: Mapping[str, str], name: str, provider: str) -> str:
+    value = env.get(name, "").strip()
+    if value in PLACEHOLDERS:
+        raise LLMConfigError(
+            f"Missing API key: LLM_PROVIDER={provider} needs {name} in .env. "
+            "Set it, or set LEADGEN_MOCK_LLM=1 to run without a key."
+        )
+    return value
+
+
+def resolve_llm(settings: Settings, env: Mapping[str, str] | None = None) -> LLMSetup:
+    """Pick the model from the environment settings.
+
+    `env` is where provider keys and base URLs are read from (default: the real
+    environment). Tests pass their own mapping.
+    """
+    env = os.environ if env is None else env
     if settings.mock_llm:
         set_tracing_disabled(True)  # tracing uploads need an OpenAI key
         return LLMSetup(provider="mock", model_name="mock-rules", model=MockModel(), mock=True)
-    if settings.llm_provider == "openai":
-        if not settings.openai_api_key or settings.openai_api_key == "sk-REPLACE-ME":
-            raise LLMConfigError(
-                "Missing API key: set OPENAI_API_KEY in .env, "
-                "or set LEADGEN_MOCK_LLM=1 to run without a key."
-            )
+
+    provider = settings.llm_provider
+    spec = PROVIDERS.get(provider)
+    if spec is None:
+        raise LLMConfigError(
+            f"Unknown LLM_PROVIDER '{provider}'. Choose one of: {', '.join(sorted(PROVIDERS))}. "
+            "See MODEL_SWITCH.md."
+        )
+
+    if spec.kind == "openai":
+        # The key is read from Settings so the placeholder check stays in one place.
+        if settings.openai_api_key in PLACEHOLDERS:
+            _key({}, spec.key_env, provider)
         return LLMSetup(
-            provider="openai",
+            provider=provider,
             model_name=settings.llm_model or "sdk-default",
             model=settings.llm_model or None,
         )
-    raise LLMConfigError(
-        f"LLM_PROVIDER='{settings.llm_provider}' is not supported yet. "
-        "Use 'openai' or set LEADGEN_MOCK_LLM=1."
+
+    if not settings.llm_model:
+        raise LLMConfigError(
+            f"LLM_MODEL is required when LLM_PROVIDER={provider}. Set it in .env to a model "
+            "name from that provider's model list."
+        )
+    api_key = _key(env, spec.key_env, provider) if spec.key_env else None
+    base_url = (env.get(spec.base_url_env, "").strip() if spec.base_url_env else "") or (
+        spec.default_base_url or None
     )
+    # Traces are uploaded to OpenAI. With another provider that would send lead
+    # data to a second company, so tracing is switched off.
+    set_tracing_disabled(True)
+
+    if spec.kind == "openai_compatible":
+        if not base_url:
+            raise LLMConfigError(
+                "LLM_BASE_URL is required when LLM_PROVIDER=openai_compatible, for example "
+                "https://your-server.example.com/v1"
+            )
+        model: Model = _openai_compatible_model(settings.llm_model, api_key or "", base_url)
+    else:
+        model = _litellm_model(f"{spec.litellm_prefix}/{settings.llm_model}", api_key, base_url)
+    return LLMSetup(provider=provider, model_name=settings.llm_model, model=model)
 
 
 # =============================================================================

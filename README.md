@@ -35,7 +35,7 @@ A new enquiry arrives (web form, webhook, or a row from `data/sample_leads.csv`)
 | 2. Core agent, tools, evals, API server | `feat/core-agent` | done |
 | Agent tuning and live-eval diagnostics | `fix/agent-tuning`, `fix/live-eval-diagnostics` | done |
 | Google Sheets live demo (optional) | `feat/google-sheets-demo` | done |
-| 3. Provider switch (`llm.py`, `MODEL_SWITCH.md`) | `feat/model-switch` | planned |
+| 3. Provider switch (`llm.py`, `MODEL_SWITCH.md`) | `feat/model-switch` | done |
 | 4. Dashboard (React + Vite, GitHub Pages) | `feat/dashboard` | planned |
 | 5. User guide and deploy docs | `docs/user-guide` | planned |
 
@@ -114,6 +114,13 @@ python -m leadgen --source sample --dry-run
 
 Without `--dry-run`, leads, drafts and the run log are saved under `data/runtime/`.
 Nothing is ever sent in either mode.
+
+## Using another model provider
+
+OpenAI is the default. Anthropic, Google Gemini, Mistral, DeepSeek, Groq,
+OpenRouter, a local Ollama model or any OpenAI-compatible server can be selected
+in `.env` with `LLM_PROVIDER` and `LLM_MODEL`, with no code change. See
+[MODEL_SWITCH.md](MODEL_SWITCH.md). Only OpenAI has been run with a real key.
 
 ## Google Sheets live demo (optional)
 

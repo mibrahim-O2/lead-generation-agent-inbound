@@ -129,7 +129,7 @@ def test_resolve_llm(settings) -> None:
         resolve_llm(Settings())
     with pytest.raises(LLMConfigError, match="OPENAI_API_KEY"):
         resolve_llm(Settings(openai_api_key="sk-REPLACE-ME"))
-    with pytest.raises(LLMConfigError, match="not supported"):
+    with pytest.raises(LLMConfigError, match="Unknown LLM_PROVIDER 'other'"):
         resolve_llm(Settings(llm_provider="other", openai_api_key="x"))
     real = resolve_llm(Settings(openai_api_key="sk-test-not-real", llm_model="some-model"))
     assert (real.provider, real.model, real.mock) == ("openai", "some-model", False)
