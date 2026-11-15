@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { applyReview, rebaseToToday } from "./data";
 import demoData from "./demo-data.json";
-import { computeStats, filterLeads, isSameLocalDay, newestFirst } from "./stats";
+import { computeStats, filterLeads, isSameLocalDay, newestFirst, scoreLevel } from "./stats";
 import type { DashboardData, LeadRecord } from "./types";
 
 const data = demoData as unknown as DashboardData;
@@ -99,5 +99,18 @@ describe("applyReview", () => {
     expect(applyReview(record, "reject", now).status).toBe("rejected");
     expect(applyReview(record, "handover", now).status).toBe("needs_human");
     expect(record.status).not.toBe("approved"); // original not modified
+  });
+});
+
+describe("scoreLevel", () => {
+  it("is strong from 7, medium from 4, muted below 4", () => {
+    expect([10, 7, 6, 4, 3, 1].map(scoreLevel)).toEqual([
+      "high",
+      "high",
+      "medium",
+      "medium",
+      "low",
+      "low",
+    ]);
   });
 });
