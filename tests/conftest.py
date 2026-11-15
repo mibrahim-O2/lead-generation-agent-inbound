@@ -2,8 +2,13 @@
 
 from __future__ import annotations
 
+import os
+import re
+from pathlib import Path
 from typing import Any
 
+import dotenv
+import dotenv.main
 import pytest
 from agents import Model, set_tracing_disabled
 
@@ -14,16 +19,47 @@ from leadgen.models import Lead
 set_tracing_disabled(True)
 
 
+ROOT = Path(__file__).resolve().parents[1]
+
+# Every variable the application documents, active or commented out in example.env.
+ENV_NAMES = frozenset(
+    re.findall(r"^#? ?([A-Z][A-Z0-9_]+)=", (ROOT / "example.env").read_text(), re.M)
+)
+# Prefixes the application reads, so a new variable is covered before it is documented.
+ENV_PREFIXES = (
+    "LEADGEN_", "LLM_", "OPENAI_", "SHEETS_", "SHEET_", "GOOGLE_", "OLLAMA_", "API_",
+    "CORS_", "VITE_", "MAX_",
+)  # fmt: skip
+# The only values tests start with. Everything else falls back to the code defaults.
+TEST_ENV = {"LEADGEN_MOCK_LLM": "1", "OPENAI_API_KEY": ""}
+
+
+def _find_no_dotenv(*_args: Any, **_kwargs: Any) -> str:
+    """Stands in for dotenv's file search: during tests no .env file is ever found."""
+    return ""
+
+
 @pytest.fixture(autouse=True)
-def safe_env(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
-    """Force mock mode and a throwaway data folder, whatever is in the developer's .env."""
-    monkeypatch.setenv("LEADGEN_MOCK_LLM", "1")
-    monkeypatch.setenv("OPENAI_API_KEY", "")
+def isolated_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Make every test independent of the developer's shell and of any real .env file.
+
+    1. The CLI, the eval runner and the server call `load_dotenv()`, which searches
+       upward from src/leadgen and finds the repository's real .env. Its values are
+       then written into os.environ for the rest of the test run. Replacing the
+       search with one that finds nothing stops that at the source, without
+       changing any application code. Loading an explicit path still works.
+    2. Every documented variable, and any variable with a prefix the app reads, is
+       removed for the duration of the test, so values exported in the shell do
+       not leak in either. Tests set what they need with monkeypatch.
+    """
+    monkeypatch.setattr(dotenv.main, "find_dotenv", _find_no_dotenv)  # used by load_dotenv()
+    monkeypatch.setattr(dotenv, "find_dotenv", _find_no_dotenv)  # the package-level name
+    for name in list(os.environ):
+        if name in ENV_NAMES or name.startswith(ENV_PREFIXES):
+            monkeypatch.delenv(name)
+    for name, value in TEST_ENV.items():
+        monkeypatch.setenv(name, value)
     monkeypatch.setenv("LEADGEN_DATA_DIR", str(tmp_path / "data"))
-    for name in ("LLM_PROVIDER", "LLM_MODEL", "MAX_LEADS_PER_RUN", "MAX_TOOL_CALLS_PER_LEAD",
-                 "MAX_TOKENS_PER_RUN", "LEADGEN_PRESET", "LEADGEN_CLIENT_CONFIG", "CORS_ORIGINS",
-                 "API_HOST", "API_PORT"):  # fmt: skip
-        monkeypatch.delenv(name, raising=False)
 
 
 @pytest.fixture(scope="session")
