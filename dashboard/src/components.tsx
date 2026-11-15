@@ -2,20 +2,82 @@ import type { ReactNode } from "react";
 import {
   ROUTE_LABELS,
   STATUS_LABELS,
+  type Stats,
   formatDateTime,
   formatShort,
   humanize,
-  type Stats,
+  scoreLevel,
 } from "./stats";
+import type { ThemeChoice } from "./theme";
 import type { LeadRecord, ReviewAction, Route, RunRecord, Status } from "./types";
 
+// ------------------------------------------------------------------ small pieces
+
 export function RouteBadge({ route }: { route: Route }) {
-  return <span className={`badge route-${route}`}>{ROUTE_LABELS[route]}</span>;
+  return <span className={`route route-${route}`}>{ROUTE_LABELS[route]}</span>;
 }
 
 export function StatusBadge({ status }: { status: Status }) {
   return <span className={`badge status-${status}`}>{STATUS_LABELS[status]}</span>;
 }
+
+export function HotBadge() {
+  return (
+    <span className="hot-badge" title="Hot lead: score 7 or more">
+      HOT
+    </span>
+  );
+}
+
+/** The score as a coloured chip plus a small bar: strong from 7, medium 4-6, muted below 4. */
+export function ScoreChip({ score, hot }: { score: number; hot: boolean }) {
+  const level = scoreLevel(score);
+  const width = `${Math.max(0, Math.min(10, score)) * 10}%`;
+  return (
+    <span className="score-cell">
+      <span className={`score-chip chip-${level}`} aria-label={`Score ${score} out of 10`}>
+        {score}
+      </span>
+      <span className="score-bar" aria-hidden="true">
+        <span className={`score-fill fill-${level}`} style={{ width }} />
+      </span>
+      {hot && <HotBadge />}
+    </span>
+  );
+}
+
+const THEME_OPTIONS: { value: ThemeChoice; label: string }[] = [
+  { value: "light", label: "Light" },
+  { value: "dark", label: "Dark" },
+  { value: "system", label: "System" },
+];
+
+export function ThemeToggle({
+  value,
+  onChange,
+}: {
+  value: ThemeChoice;
+  onChange: (choice: ThemeChoice) => void;
+}) {
+  return (
+    <div className="segmented" role="group" aria-label="Colour theme">
+      {THEME_OPTIONS.map((option) => (
+        <button
+          key={option.value}
+          type="button"
+          className={value === option.value ? "active" : ""}
+          aria-pressed={value === option.value}
+          title={option.value === "system" ? "Follow your computer's setting" : undefined}
+          onClick={() => onChange(option.value)}
+        >
+          {option.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// ------------------------------------------------------------------ tiles
 
 export function StatTiles({ stats }: { stats: Stats }) {
   const tiles: { label: string; value: string; hint: string }[] = [
@@ -46,6 +108,8 @@ export function StatTiles({ stats }: { stats: Stats }) {
   );
 }
 
+// ------------------------------------------------------------------ leads table
+
 export function LeadsTable({
   leads,
   selectedId,
@@ -60,69 +124,84 @@ export function LeadsTable({
   }
   return (
     <div className="table-wrap">
-      <table>
+      <table className="leads">
         <thead>
           <tr>
-            <th>Received</th>
-            <th>Name</th>
-            <th>Intent</th>
-            <th className="num">Score</th>
-            <th>Route</th>
-            <th>Status</th>
+            <th scope="col">Received</th>
+            <th scope="col">Lead</th>
+            <th scope="col">Score</th>
+            <th scope="col">Route</th>
+            <th scope="col">Status</th>
           </tr>
         </thead>
         <tbody>
-          {leads.map((record) => (
-            <tr
-              key={record.lead.id}
-              className={record.lead.id === selectedId ? "selected" : undefined}
-              onClick={() => onSelect(record.lead.id)}
-            >
-              <td className="nowrap">{formatShort(record.lead.received_at)}</td>
-              <td className="nowrap">
-                <button
-                  type="button"
-                  className="link"
-                  aria-pressed={record.lead.id === selectedId}
-                  onClick={() => onSelect(record.lead.id)}
-                >
-                  {record.lead.name || "(no name)"}
-                </button>
-                <div className="sub">{record.lead.channel}</div>
-              </td>
-              <td>{humanize(record.intent)}</td>
-              <td className="num">
-                <span className={record.is_hot ? "score hot" : "score"}>{record.score}</span>
-                {record.is_hot && <span className="hot-tag">HOT</span>}
-              </td>
-              <td>
-                <RouteBadge route={record.route} />
-              </td>
-              <td>
-                <StatusBadge status={record.status} />
-              </td>
-            </tr>
-          ))}
+          {leads.map((record) => {
+            const selected = record.lead.id === selectedId;
+            return (
+              <tr
+                key={record.lead.id}
+                className={selected ? "selected" : undefined}
+                onClick={() => onSelect(record.lead.id)}
+              >
+                <td className="nowrap col-received">{formatShort(record.lead.received_at)}</td>
+                <td className="nowrap col-lead">
+                  <button
+                    type="button"
+                    className="name-button"
+                    aria-pressed={selected}
+                    onClick={() => onSelect(record.lead.id)}
+                  >
+                    {record.lead.name || "(no name)"}
+                  </button>
+                  <span className="cell-sub">
+                    {humanize(record.intent)} · {record.lead.channel}
+                  </span>
+                </td>
+                <td className="col-score">
+                  <ScoreChip score={record.score} hot={record.is_hot} />
+                </td>
+                <td className="col-route">
+                  <RouteBadge route={record.route} />
+                </td>
+                <td className="col-status">
+                  <StatusBadge status={record.status} />
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>
   );
 }
 
-function Field({ label, children }: { label: string; children: ReactNode }) {
+// ------------------------------------------------------------------ lead detail
+
+function Field({
+  label,
+  wide = false,
+  children,
+}: {
+  label: string;
+  wide?: boolean;
+  children: ReactNode;
+}) {
   return (
-    <div className="field">
+    <div className={wide ? "wide" : undefined}>
       <dt>{label}</dt>
       <dd>{children}</dd>
     </div>
   );
 }
 
-const ACTIONS: { action: ReviewAction; label: string; className: string }[] = [
-  { action: "approve", label: "Approve draft", className: "primary" },
-  { action: "reject", label: "Reject draft", className: "" },
-  { action: "handover", label: "Hand over to a human", className: "" },
-];
+function Section({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <section className="section">
+      <h3>{title}</h3>
+      {children}
+    </section>
+  );
+}
 
 export function LeadDetail({
   record,
@@ -138,14 +217,16 @@ export function LeadDetail({
   const { lead, extracted } = record;
   const bill = extracted.monthly_bill_pkr;
   const breakdown = Object.entries(record.score_breakdown);
+  const noDraft = !record.draft_reply;
+  const approveWhy = noDraft ? "No draft to approve: a person writes this reply." : "";
+  const busyWhy = busy ? "Saving your decision..." : "";
+
   return (
     <article className="detail" aria-label="Lead detail">
       <header className="detail-head">
         <div>
           <h2>{lead.name || "(no name)"}</h2>
-          <div className="sub">
-            {lead.id} · {lead.channel} · received {formatDateTime(lead.received_at)}
-          </div>
+          <p className="detail-meta">Lead {lead.id}</p>
         </div>
         <div className="detail-badges">
           <RouteBadge route={record.route} />
@@ -153,122 +234,154 @@ export function LeadDetail({
         </div>
       </header>
 
-      <dl className="fields">
-        <Field label="Email">{lead.email || "-"}</Field>
-        <Field label="Phone">{lead.phone || "-"}</Field>
-        <Field label="Intent">{humanize(record.intent)}</Field>
-        <Field label="Score">
-          {record.score} / 10 {record.is_hot && <span className="hot-tag">HOT</span>}
-        </Field>
-      </dl>
+      <Section title="Contact">
+        <dl className="fields">
+          <Field label="Email" wide>
+            {lead.email || "-"}
+          </Field>
+          <Field label="Phone">{lead.phone || "-"}</Field>
+          <Field label="Channel">{lead.channel}</Field>
+          <Field label="Received" wide>
+            {formatDateTime(lead.received_at)}
+          </Field>
+        </dl>
+      </Section>
 
-      <h3>Message</h3>
-      <p className="message">{lead.message}</p>
+      <Section title="Message">
+        <p className="text-box">{lead.message}</p>
+      </Section>
 
-      <h3>What the agent understood</h3>
-      <dl className="fields">
-        <Field label="Property">{humanize(extracted.property_type)}</Field>
-        <Field label="Monthly bill">{bill === null ? "-" : `PKR ${bill.toLocaleString()}`}</Field>
-        <Field label="Sanctioned load">
-          {extracted.sanctioned_load_kw === null ? "-" : `${extracted.sanctioned_load_kw} kW`}
-        </Field>
-        <Field label="Location">{extracted.location || "-"}</Field>
-        <Field label="Timeline">{humanize(extracted.timeline)}</Field>
-        <Field label="Interested in">{extracted.product_interest.join(", ") || "-"}</Field>
-      </dl>
+      <Section title="What the agent understood">
+        <dl className="fields">
+          <Field label="Intent">{humanize(record.intent)}</Field>
+          <Field label="Property">{humanize(extracted.property_type)}</Field>
+          <Field label="Monthly bill">
+            {bill === null ? "-" : `PKR ${bill.toLocaleString()}`}
+          </Field>
+          <Field label="Sanctioned load">
+            {extracted.sanctioned_load_kw === null ? "-" : `${extracted.sanctioned_load_kw} kW`}
+          </Field>
+          <Field label="Location">{extracted.location || "-"}</Field>
+          <Field label="Timeline">{humanize(extracted.timeline)}</Field>
+          <Field label="Interested in" wide>
+            {extracted.product_interest.join(", ") || "-"}
+          </Field>
+          <Field label="Still missing" wide>
+            {record.missing_info.map(humanize).join(", ") || "Nothing"}
+          </Field>
+        </dl>
+      </Section>
 
-      {breakdown.length > 0 && (
-        <>
-          <h3>Score breakdown</h3>
-          <ul className="chips">
+      <Section title="Score">
+        <ScoreChip score={record.score} hot={record.is_hot} />
+        {breakdown.length > 0 && (
+          <ul className="breakdown" aria-label="Score breakdown">
             {breakdown.map(([name, points]) => (
               <li key={name}>
-                {humanize(name)} <strong>+{points}</strong>
+                <span>{humanize(name)}</span>
+                <strong>+{points}</strong>
               </li>
             ))}
           </ul>
-        </>
-      )}
-
-      {record.missing_info.length > 0 && (
-        <>
-          <h3>Still missing</h3>
-          <ul className="chips">
-            {record.missing_info.map((item) => (
-              <li key={item}>{humanize(item)}</li>
-            ))}
-          </ul>
-        </>
-      )}
+        )}
+      </Section>
 
       {record.handover_reason && (
-        <>
-          <h3>Handover reason</h3>
-          <p className="notice warn">{record.handover_reason}</p>
-        </>
+        <Section title="Handover reason">
+          <p className="reason">{record.handover_reason}</p>
+        </Section>
       )}
 
-      {record.flags.length > 0 && (
-        <>
-          <h3>Flags</h3>
-          <ul className="chips">
-            {record.flags.map((flag) => (
-              <li key={flag} className="flag">
-                {humanize(flag)}
-              </li>
-            ))}
-          </ul>
-        </>
+      {(record.flags.length > 0 || record.rejected_drafts.length > 0) && (
+        <Section title="Review notes">
+          {record.flags.length > 0 && (
+            <ul className="chips" aria-label="Flags">
+              {record.flags.map((flag) => (
+                <li key={flag} className="flag">
+                  {humanize(flag)}
+                </li>
+              ))}
+            </ul>
+          )}
+          {record.rejected_drafts.length > 0 && (
+            <ul className="plain">
+              {record.rejected_drafts.map((rejected) => (
+                <li key={rejected.attempt}>
+                  Draft attempt {rejected.attempt} blocked by the safety checks:{" "}
+                  {rejected.problems.map((problem) => humanize(problem.check)).join(", ")}
+                </li>
+              ))}
+            </ul>
+          )}
+        </Section>
       )}
 
-      {record.rejected_drafts.length > 0 && (
-        <>
-          <h3>Drafts blocked by the safety checks</h3>
-          <ul className="plain">
-            {record.rejected_drafts.map((rejected) => (
-              <li key={rejected.attempt}>
-                Attempt {rejected.attempt}:{" "}
-                {rejected.problems.map((problem) => humanize(problem.check)).join(", ")}
-              </li>
-            ))}
-          </ul>
-        </>
-      )}
+      <Section title="Draft reply">
+        {noDraft ? (
+          <p className="muted">No draft. A person writes this reply.</p>
+        ) : (
+          <p className="text-box draft">{record.draft_reply}</p>
+        )}
+      </Section>
 
-      <h3>Draft reply</h3>
-      {record.draft_reply ? (
-        <>
-          <pre className="draft">{record.draft_reply}</pre>
-          <p className="sub">
-            Draft only. It has not been sent. A person reviews it and sends it themselves.
+      <div className="action-box">
+        <div className="actions">
+          <span title={busyWhy || approveWhy || undefined}>
+            <button
+              type="button"
+              className="btn primary"
+              disabled={busy || noDraft}
+              aria-describedby={noDraft ? "approve-why" : undefined}
+              onClick={() => onReview("approve")}
+            >
+              Approve draft
+            </button>
+          </span>
+          <span title={busyWhy || undefined}>
+            <button
+              type="button"
+              className="btn"
+              disabled={busy}
+              onClick={() => onReview("reject")}
+            >
+              Reject draft
+            </button>
+          </span>
+          <span title={busyWhy || undefined}>
+            <button
+              type="button"
+              className="btn"
+              disabled={busy}
+              onClick={() => onReview("handover")}
+            >
+              Hand over to a human
+            </button>
+          </span>
+        </div>
+        {noDraft && (
+          <p className="hint" id="approve-why">
+            {approveWhy}
           </p>
-        </>
-      ) : (
-        <p className="empty">No draft. A person writes this reply.</p>
-      )}
-
-      <div className="actions">
-        {ACTIONS.map(({ action, label, className }) => (
-          <button
-            key={action}
-            type="button"
-            className={className}
-            disabled={busy || (action === "approve" && !record.draft_reply)}
-            onClick={() => onReview(action)}
-          >
-            {label}
-          </button>
-        ))}
+        )}
+        {busy && (
+          <p className="hint" role="status">
+            {busyWhy}
+          </p>
+        )}
+        <p className="send-note">
+          <strong>Nothing is ever sent from here.</strong>{" "}
+          {demo
+            ? "Demo data: these buttons only change this page."
+            : "These buttons only record your decision in the local data."}{" "}
+          A person copies the approved draft and sends it themselves.
+          {record.reviewed_at && ` Last reviewed ${formatDateTime(record.reviewed_at)}.`}
+        </p>
       </div>
-      <p className="sub">
-        {demo
-          ? "Demo data: these buttons only change this page. Nothing is saved or sent."
-          : "These buttons record your decision in the local data. Nothing is sent to the customer."}
-        {record.reviewed_at && ` Last reviewed ${formatDateTime(record.reviewed_at)}.`}
-      </p>
     </article>
   );
 }
+
+// ------------------------------------------------------------------ run history
 
 export function RunHistory({ runs }: { runs: RunRecord[] }) {
   if (runs.length === 0) {
@@ -277,19 +390,33 @@ export function RunHistory({ runs }: { runs: RunRecord[] }) {
   const newest = [...runs].sort((a, b) => b.started_at.localeCompare(a.started_at));
   return (
     <div className="table-wrap">
-      <table>
+      <table className="runs">
         <thead>
           <tr>
-            <th>Started</th>
-            <th>Source</th>
-            <th>Model</th>
-            <th className="num">Leads</th>
-            <th className="num">Drafts</th>
-            <th className="num">Handovers</th>
-            <th className="num">Hot</th>
-            <th className="num">Tokens</th>
-            <th className="num">Cost est.</th>
-            <th className="num">Errors</th>
+            <th scope="col">Started</th>
+            <th scope="col">Source</th>
+            <th scope="col">Model</th>
+            <th scope="col" className="num">
+              Leads
+            </th>
+            <th scope="col" className="num">
+              Drafts
+            </th>
+            <th scope="col" className="num">
+              Handovers
+            </th>
+            <th scope="col" className="num">
+              Hot
+            </th>
+            <th scope="col" className="num">
+              Tokens
+            </th>
+            <th scope="col" className="num">
+              Cost est.
+            </th>
+            <th scope="col" className="num">
+              Errors
+            </th>
           </tr>
         </thead>
         <tbody>
@@ -297,7 +424,7 @@ export function RunHistory({ runs }: { runs: RunRecord[] }) {
             <tr key={run.id}>
               <td className="nowrap">{formatShort(run.started_at)}</td>
               <td>{run.source}</td>
-              <td>
+              <td className="nowrap">
                 {run.provider}/{run.model}
               </td>
               <td className="num">{run.leads_processed}</td>

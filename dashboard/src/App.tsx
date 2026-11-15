@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { LeadDetail, LeadsTable, RunHistory, StatTiles } from "./components";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { LeadDetail, LeadsTable, RunHistory, StatTiles, ThemeToggle } from "./components";
 import { API_URL, MODE, loadData, reviewLead } from "./data";
 import { ROUTE_LABELS, computeStats, filterLeads, newestFirst } from "./stats";
+import { type ThemeChoice, applyThemeChoice, readThemeChoice, saveThemeChoice } from "./theme";
 import type { DashboardData, ReviewAction, Route } from "./types";
 
 const REFRESH_MS = 5000;
@@ -16,6 +17,23 @@ export function App() {
   const [route, setRoute] = useState<Route | "all">("all");
   const [query, setQuery] = useState("");
   const [busy, setBusy] = useState(false);
+  const [theme, setTheme] = useState<ThemeChoice>(() => readThemeChoice());
+  const detailRef = useRef<HTMLDivElement>(null);
+
+  // On narrow screens the detail panel sits below the list, so bring it into view.
+  function selectLead(id: string) {
+    setSelectedId(id);
+    if (window.matchMedia?.("(max-width: 1180px)").matches) {
+      window.requestAnimationFrame(() =>
+        detailRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }),
+      );
+    }
+  }
+
+  useEffect(() => {
+    applyThemeChoice(theme);
+    saveThemeChoice(theme); // fails quietly when the browser blocks storage
+  }, [theme]);
 
   const refresh = useCallback(async () => {
     try {
@@ -61,14 +79,15 @@ export function App() {
       <header className="top">
         <div>
           <h1>Lead Agent Dashboard</h1>
-          <p className="sub">Inbound enquiries, scored and drafted. A person approves and sends.</p>
+          <p className="lede">Inbound enquiries, scored and drafted. A person approves and sends.</p>
         </div>
         <div className="top-right">
           <span className={demo ? "mode demo" : "mode local"}>
             {demo ? "Demo data" : "Local mode"}
           </span>
+          <ThemeToggle value={theme} onChange={setTheme} />
           {!demo && (
-            <button type="button" onClick={() => void refresh()}>
+            <button type="button" className="btn" onClick={() => void refresh()}>
               Refresh
             </button>
           )}
@@ -76,12 +95,12 @@ export function App() {
       </header>
 
       {demo ? (
-        <p className="notice">
+        <p className="banner">
           <strong>Demo data.</strong> Everything on this page is fictional sample data bundled with
           the site. It makes no network requests, and the buttons only change this page.
         </p>
       ) : (
-        <p className="sub">
+        <p className="status-line">
           Connected to {API_URL}
           {updatedAt && ` · updated ${updatedAt.toLocaleTimeString()}`}
           {data && data.pending.length > 0 && ` · ${data.pending.length} queued, not processed yet`}
@@ -89,7 +108,7 @@ export function App() {
       )}
 
       {error && (
-        <p className="notice bad" role="alert">
+        <p className="banner error" role="alert">
           {demo
             ? error
             : `Cannot reach the local API at ${API_URL}: ${error}. Start it with "make serve".`}
@@ -132,18 +151,20 @@ export function App() {
               <LeadsTable
                 leads={visible}
                 selectedId={selected?.lead.id ?? null}
-                onSelect={setSelectedId}
+                onSelect={selectLead}
               />
-              {selected ? (
-                <LeadDetail
+              <div ref={detailRef} className="detail-slot">
+                {selected ? (
+                  <LeadDetail
                   record={selected}
                   demo={demo}
                   busy={busy}
                   onReview={(action) => void review(action)}
                 />
-              ) : (
-                <p className="empty">Select a lead to see its draft.</p>
-              )}
+                ) : (
+                  <p className="empty">Select a lead to see its draft.</p>
+                )}
+              </div>
             </div>
           </section>
 
@@ -156,7 +177,7 @@ export function App() {
         </>
       )}
 
-      <footer className="sub">
+      <footer>
         Fictional company and dummy data. This dashboard never sends anything.
       </footer>
     </div>
