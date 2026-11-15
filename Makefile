@@ -1,4 +1,4 @@
-.PHONY: install test lint evals evals-live evals-live-case demo demo-dry demo-sheet serve dashboard-install dashboard-dev dashboard-demo dashboard-test dashboard-build dashboard-demo-data
+.PHONY: install test lint evals evals-live evals-live-case demo demo-dry demo-sheet serve dashboard-install dashboard-dev dashboard-demo dashboard-test dashboard-contrast dashboard-build dashboard-demo-data
 
 PYTHON ?= python
 
@@ -48,6 +48,9 @@ dashboard-demo:  ## Dashboard in DEMO mode at http://localhost:5173 (bundled dum
 
 dashboard-test:  ## Type check and unit tests for the dashboard
 	cd dashboard && npm run typecheck && npm test
+
+dashboard-contrast:  ## Print the WCAG contrast ratio of every dashboard colour pair, light and dark
+	cd dashboard && npm run contrast
 
 dashboard-build:  ## Production build of the DEMO site into dashboard/dist
 	cd dashboard && VITE_API_URL= npm run build

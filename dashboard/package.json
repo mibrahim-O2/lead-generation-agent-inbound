@@ -8,7 +8,8 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "contrast": "vitest run src/contrast.test.ts --reporter=verbose"
   },
   "dependencies": {
     "react": "^19.3.1",

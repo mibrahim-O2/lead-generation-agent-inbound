@@ -1,3 +1,4 @@
+/// <reference types="vitest/config" />
 import react from "@vitejs/plugin-react";
 import { defineConfig, loadEnv } from "vite";
 
@@ -8,5 +9,9 @@ export default defineConfig(({ mode }) => {
   return {
     base: env.VITE_BASE || "/",
     plugins: [react()],
+    test: {
+      // Vitest skips CSS by default. The contrast test reads styles.css as text.
+      css: { include: [/styles\.css/] },
+    },
   };
 });
