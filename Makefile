@@ -1,4 +1,4 @@
-.PHONY: install test lint evals evals-live evals-live-case demo demo-dry demo-sheet serve
+.PHONY: install test lint evals evals-live evals-live-case demo demo-dry demo-sheet serve dashboard-install dashboard-dev dashboard-demo dashboard-test dashboard-contrast dashboard-build dashboard-demo-data
 
 PYTHON ?= python
 
@@ -33,3 +33,27 @@ demo-sheet:  ## OPTIONAL live demo: sample leads one by one into your Google She
 
 serve:  ## Start the local API for the dashboard (settings come from .env)
 	$(PYTHON) -m leadgen.server
+
+# --- Dashboard (needs Node.js 20+; see dashboard/README.md) --------------------
+API_URL ?= http://127.0.0.1:8000
+
+dashboard-install:  ## Install the dashboard's npm packages (once)
+	cd dashboard && npm install
+
+dashboard-dev:  ## Dashboard in LOCAL mode at http://localhost:5173 (run `make serve` in another terminal)
+	cd dashboard && VITE_API_URL=$(API_URL) npm run dev
+
+dashboard-demo:  ## Dashboard in DEMO mode at http://localhost:5173 (bundled dummy data, no API)
+	cd dashboard && VITE_API_URL= npm run dev
+
+dashboard-test:  ## Type check and unit tests for the dashboard
+	cd dashboard && npm run typecheck && npm test
+
+dashboard-contrast:  ## Print the WCAG contrast ratio of every dashboard colour pair, light and dark
+	cd dashboard && npm run contrast
+
+dashboard-build:  ## Production build of the DEMO site into dashboard/dist
+	cd dashboard && VITE_API_URL= npm run build
+
+dashboard-demo-data:  ## Regenerate the dashboard's bundled demo data from the mock model
+	$(PYTHON) dashboard/scripts/make_demo_data.py

@@ -4,6 +4,7 @@ POST /leads   queue a new enquiry (the "webhook")
 GET  /leads   processed leads and the pending queue
 GET  /runs    run history
 POST /run     process leads now (pending webhook leads or the sample file)
+POST /leads/{id}/review   a human approves or rejects a draft, or takes the lead over
 
 Local use only: there is no authentication, so keep it bound to 127.0.0.1.
 """
@@ -18,7 +19,7 @@ from pydantic import BaseModel, Field
 
 from leadgen.config import ConfigError, Settings, load_rulebook
 from leadgen.llm import LLMConfigError
-from leadgen.models import Lead
+from leadgen.models import Lead, ReviewAction, now_iso
 from leadgen.runner import SourceError, load_leads, run_leads
 from leadgen.sheets import open_storage
 from leadgen.storage import Storage
@@ -30,6 +31,13 @@ class NewLead(BaseModel):
     phone: str = Field(default="", max_length=50)
     channel: str = Field(default="webhook", max_length=50)
     message: str = Field(min_length=1, max_length=5000)
+
+
+class ReviewRequest(BaseModel):
+    action: ReviewAction
+
+
+REVIEW_STATUS = {"approve": "approved", "reject": "rejected", "handover": "needs_human"}
 
 
 class RunRequest(BaseModel):
@@ -69,6 +77,23 @@ def create_app(settings: Settings | None = None, storage: Storage | None = None)
     @app.get("/runs")
     def list_runs() -> dict[str, list]:
         return {"runs": [run.model_dump() for run in storage.list_runs()]}
+
+    @app.post("/leads/{lead_id}/review")
+    def review_lead(lead_id: str, review: ReviewRequest) -> dict:
+        """Record a human's decision on a lead. This never sends anything."""
+        record = next((r for r in storage.list_records() if r.lead.id == lead_id), None)
+        if record is None:
+            raise HTTPException(status_code=404, detail=f"No lead with id '{lead_id}'")
+        if review.action == "approve" and not record.draft_reply:
+            raise HTTPException(status_code=409, detail="This lead has no draft to approve")
+        update = {"status": REVIEW_STATUS[review.action], "reviewed_at": now_iso()}
+        if review.action == "handover" and not record.handover_reason:
+            update["handover_reason"] = "Taken over by a human in the dashboard"
+        updated = record.model_copy(update=update)
+        storage.save_record(updated)
+        # "sent" is always false: approving only records the decision. A person
+        # copies the draft and sends it themselves.
+        return {"lead": updated.model_dump(), "sent": False}
 
     @app.post("/run")
     async def start_run(request: RunRequest) -> dict:

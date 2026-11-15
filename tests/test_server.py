@@ -73,3 +73,75 @@ def test_missing_key_gives_400_not_500(tmp_path) -> None:
 
 def test_health(client: TestClient) -> None:
     assert client.get("/health").json() == {"status": "ok", "mode": "mock"}
+
+
+# --------------------------------------------------------------------------- review actions
+
+
+@pytest.fixture
+def reviewed(client: TestClient) -> TestClient:
+    """A client with the five sample leads already processed."""
+    client.post("/run", json={"source": "sample"})
+    return client
+
+
+def status_of(client: TestClient, lead_id: str) -> str:
+    leads = client.get("/leads").json()["leads"]
+    return next(lead["status"] for lead in leads if lead["lead"]["id"] == lead_id)
+
+
+@pytest.mark.parametrize(
+    ("action", "status"),
+    [("approve", "approved"), ("reject", "rejected"), ("handover", "needs_human")],
+)
+def test_review_actions_change_only_the_status(reviewed, action: str, status: str) -> None:
+    before = next(x for x in reviewed.get("/leads").json()["leads"] if x["lead"]["id"] == "S001")
+    response = reviewed.post("/leads/S001/review", json={"action": action})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["sent"] is False  # approving never sends anything
+    after = body["lead"]
+    assert after["status"] == status and after["reviewed_at"]
+    assert after["draft_reply"] == before["draft_reply"] and after["score"] == before["score"]
+    assert after["route"] == before["route"]
+    assert status_of(reviewed, "S001") == status  # stored
+    assert len(reviewed.get("/leads").json()["leads"]) == 5  # nothing duplicated
+
+
+def test_handover_from_the_dashboard_records_a_reason(reviewed) -> None:
+    lead = reviewed.post("/leads/S002/review", json={"action": "handover"}).json()["lead"]
+    assert lead["handover_reason"] == "Taken over by a human in the dashboard"
+    # an existing reason is kept
+    kept = reviewed.post("/leads/S004/review", json={"action": "handover"}).json()["lead"]
+    assert kept["handover_reason"].startswith("complaint")
+
+
+def test_review_errors(reviewed) -> None:
+    assert reviewed.post("/leads/NOPE/review", json={"action": "approve"}).status_code == 404
+    # S004 is a complaint: it has no draft, so there is nothing to approve
+    no_draft = reviewed.post("/leads/S004/review", json={"action": "approve"})
+    assert no_draft.status_code == 409 and "no draft" in no_draft.json()["detail"]
+    assert reviewed.post("/leads/S001/review", json={"action": "send"}).status_code == 422
+    assert reviewed.post("/leads/S001/review", json={}).status_code == 422
+
+
+def test_no_endpoint_can_send_anything(client: TestClient) -> None:
+    paths = {route.path for route in client.app.routes}
+    assert not any(word in path for path in paths for word in ("send", "email", "sms", "deliver"))
+
+
+def test_review_is_allowed_by_cors_preflight(client: TestClient) -> None:
+    response = client.options(
+        "/leads/S001/review",
+        headers={
+            "Origin": "http://localhost:5173",
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "content-type",
+        },
+    )
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "http://localhost:5173"
+
+
+def test_server_binds_to_localhost_by_default() -> None:
+    assert Settings.from_env({}).api_host == "127.0.0.1"
