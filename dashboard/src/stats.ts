@@ -34,6 +34,15 @@ export function computeStats(leads: LeadRecord[], now: Date): Stats {
   };
 }
 
+export type ScoreLevel = "high" | "medium" | "low";
+
+/** How strongly a score is shown: 7-10 strong, 4-6 medium, 1-3 muted. */
+export function scoreLevel(score: number): ScoreLevel {
+  if (score >= 7) return "high";
+  if (score >= 4) return "medium";
+  return "low";
+}
+
 /** Newest enquiry first, by the time it was received (the date shown in the table). */
 export function newestFirst(leads: LeadRecord[]): LeadRecord[] {
   const time = (record: LeadRecord) => new Date(record.lead.received_at).getTime() || 0;
