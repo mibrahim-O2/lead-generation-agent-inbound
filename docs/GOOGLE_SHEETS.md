@@ -145,8 +145,12 @@ leads one at a time. A new row appears in the Leads tab after each one.
 
 ## Typing leads into the Inbox tab
 
-Type a row into the **Inbox** tab: at least the **Message** column, and ideally
-Name, Email and Phone. Leave **Processed** empty.
+Type a row into the **Inbox** tab: at least the **Message** column (column E),
+and ideally Name, Email and Phone. Leave **Processed** (column F) empty.
+
+The columns must be in this order: Received At, Name, Email, Phone, Message,
+Processed. If the tab is completely empty, run `python -m leadgen --source sheet`
+once first and the agent writes that header row for you.
 
 Process the new rows once:
 
