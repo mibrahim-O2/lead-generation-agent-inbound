@@ -245,6 +245,21 @@ def test_inbox_reads_only_new_rows_with_a_message() -> None:
     assert fake.writes == []  # reading never writes
 
 
+def test_enquiry_typed_into_row_one_of_a_headerless_tab_is_not_skipped() -> None:
+    rows = [
+        ["", "Row One", "one@example.com", "", "Need solar for my house in Lahore", ""],
+        ["", "Row Two", "two@example.com", "", "Office in Gulberg, need a site survey", ""],
+    ]
+    fake = FakeSheetsClient({"Leads": [], "Inbox": rows})
+    inbox = InboxSheet(fake)
+    leads = inbox.pending()
+    assert [lead.name for lead in leads] == ["Row One", "Row Two"]
+    assert leads[0].id.startswith("SH-1-") and leads[1].id.startswith("SH-2-")
+    inbox.mark_processed(LeadRecord(lead=leads[0], route="draft_reply"))
+    assert fake.tabs["Inbox"][0][5].startswith("draft_reply")  # row 1 itself was marked
+    assert [lead.name for lead in InboxSheet(fake).pending()] == ["Row Two"]
+
+
 def test_empty_inbox_tab_gets_its_header(fake) -> None:
     assert InboxSheet(fake).pending() == []
     assert fake.tabs["Inbox"] == [INBOX_HEADER]

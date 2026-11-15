@@ -264,8 +264,12 @@ class InboxSheet:
         if not any(any(cell.strip() for cell in row) for row in rows):
             self.client.append(self.tab, list(INBOX_HEADER))
             return []
+        # Row 1 is skipped only when it really is a header. If someone typed an
+        # enquiry into row 1 of a tab without a header, it must not be lost.
+        first = {cell.strip().lower() for cell in rows[0]}
+        start = 2 if first & {"message", "received at", "processed"} else 1
         leads = []
-        for number, row in enumerate(rows[1:], start=2):  # row 1 is the header
+        for number, row in enumerate(rows[start - 1 :], start=start):
             cells = [cell.strip() for cell in row] + [""] * len(INBOX_HEADER)
             received, name, email, phone, message, processed = cells[: len(INBOX_HEADER)]
             if not message or processed:

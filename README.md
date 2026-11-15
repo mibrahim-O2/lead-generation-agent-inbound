@@ -8,6 +8,18 @@ human to approve. Built with the [OpenAI Agents SDK](https://github.com/openai/o
 > "Example Solar Co" (solar panels, inverters, batteries, installation and net
 > metering in Lahore). No real company, customer or contact details are used.
 
+**New here? Start with [USER.md](USER.md)**, the step-by-step guide: install, run
+the demo, set up `.env`, the dashboard, Google Sheets, switching models, and
+troubleshooting.
+
+| Guide | For |
+| --- | --- |
+| [USER.md](USER.md) | Using the project from a fresh clone |
+| [MODEL_SWITCH.md](MODEL_SWITCH.md) | Using a provider other than OpenAI |
+| [docs/GOOGLE_SHEETS.md](docs/GOOGLE_SHEETS.md) | The optional Google Sheets live demo |
+| [dashboard/README.md](dashboard/README.md) | The dashboard and its two modes |
+| [evals/README.md](evals/README.md) | Eval cases, including the live runs |
+
 ## What it does
 
 A new enquiry arrives (web form, webhook, or a row from `data/sample_leads.csv`). The agent:
@@ -37,7 +49,7 @@ A new enquiry arrives (web form, webhook, or a row from `data/sample_leads.csv`)
 | Google Sheets live demo (optional) | `feat/google-sheets-demo` | done |
 | 3. Provider switch (`llm.py`, `MODEL_SWITCH.md`) | `feat/model-switch` | done |
 | 4. Dashboard (React + Vite, GitHub Pages) | `feat/dashboard` | done |
-| 5. User guide and deploy docs | `docs/user-guide` | planned |
+| 5. User guide (`USER.md`) | `docs/user-guide` | done |
 
 The agent, its tools, the guardrails, the local API and the evals work today,
 using OpenAI or the built-in mock model. Other providers and the dashboard are next.
